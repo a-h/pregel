@@ -29,8 +29,11 @@ func NewStore(region, tableName string) (store *Store, err error) {
 
 // Store handles storage of data in DynamoDB.
 type Store struct {
-	Client    *dynamodb.DynamoDB
-	TableName *string
+	Client                *dynamodb.DynamoDB
+	TableName             *string
+	ConsumedCapacity      float64
+	ConsumedReadCapacity  float64
+	ConsumedWriteCapacity float64
 }
 
 func convertToRecords(n Node) (nodeRecord map[string]*dynamodb.AttributeValue, edgeRecords []map[string]*dynamodb.AttributeValue, err error) {
@@ -81,8 +84,22 @@ func getWriteRequests(n Node) (requests []*dynamodb.WriteRequest, err error) {
 	return
 }
 
+func (s *Store) updateCapacityStats(c ...*dynamodb.ConsumedCapacity) {
+	for _, cc := range c {
+		if cc.CapacityUnits != nil {
+			s.ConsumedCapacity += *cc.CapacityUnits
+		}
+		if cc.ReadCapacityUnits != nil {
+			s.ConsumedReadCapacity += *cc.ReadCapacityUnits
+		}
+		if cc.WriteCapacityUnits != nil {
+			s.ConsumedWriteCapacity += *cc.WriteCapacityUnits
+		}
+	}
+}
+
 // Put upserts Nodes and Edges into DynamoDB.
-func (rs *Store) Put(nodes ...Node) (err error) {
+func (s *Store) Put(nodes ...Node) (err error) {
 	// Map from nodes into the Write Requests.
 	var wrs []*dynamodb.WriteRequest
 	for _, n := range nodes {
@@ -93,17 +110,21 @@ func (rs *Store) Put(nodes ...Node) (err error) {
 		}
 		wrs = append(wrs, wrb...)
 	}
-	_, err = rs.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*rs.TableName: wrs,
+			*s.TableName: wrs,
 		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
 	})
+	if err != nil {
+		return
+	}
+	s.updateCapacityStats(bwo.ConsumedCapacity...)
 	return
 }
 
 // PutEdges into the store.
-func (rs *Store) PutEdges(parent string, edges ...Edge) (err error) {
+func (s *Store) PutEdges(parent string, edges ...Edge) (err error) {
 	wrs := make([]*dynamodb.WriteRequest, len(edges))
 	records, err := convertEdgesToRecords(parent, edges)
 	if err != nil {
@@ -116,12 +137,16 @@ func (rs *Store) PutEdges(parent string, edges ...Edge) (err error) {
 			},
 		}
 	}
-	_, err = rs.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*rs.TableName: wrs,
+			*s.TableName: wrs,
 		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
 	})
+	if err != nil {
+		return
+	}
+	s.updateCapacityStats(bwo.ConsumedCapacity...)
 	return
 }
 
@@ -190,7 +215,7 @@ func populateNodeFromEdgeRecord(itm map[string]*dynamodb.AttributeValue, n *Node
 }
 
 // GetParentsOf the child.
-func (rs *Store) GetParentsOf(child string) (parents []string, err error) {
+func (s *Store) GetParentsOf(child string) (parents []string, err error) {
 	q := expression.
 		Key(fieldChild).
 		Equal(expression.Value(child))
@@ -205,12 +230,12 @@ func (rs *Store) GetParentsOf(child string) (parents []string, err error) {
 
 	qi := &dynamodb.QueryInput{
 		IndexName:                 aws.String("parentsOfChild"),
-		TableName:                 rs.TableName,
+		TableName:                 s.TableName,
 		KeyConditionExpression:    expr.KeyCondition(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
 		ExpressionAttributeNames:  expr.Names(),
-		ReturnConsumedCapacity:    aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity:    aws.String(dynamodb.ReturnConsumedCapacityIndexes),
 	}
 
 	//TODO: Worry about how many parents there could be?
@@ -222,10 +247,11 @@ func (rs *Store) GetParentsOf(child string) (parents []string, err error) {
 			}
 			parents = append(parents, v)
 		}
+		s.updateCapacityStats(page.ConsumedCapacity)
 		return true
 	}
 
-	err = rs.Client.QueryPages(qi, page)
+	err = s.Client.QueryPages(qi, page)
 	if err != nil {
 		err = fmt.Errorf("Store.GetParentsOf: failed to query pages: %v", err)
 		return
@@ -235,13 +261,13 @@ func (rs *Store) GetParentsOf(child string) (parents []string, err error) {
 }
 
 // Get retrieves data from DynamoDB.
-func (rs *Store) Get(id string) (n Node, ok bool, err error) {
-	return rs.GetWithTypedData(id, nil)
+func (s *Store) Get(id string) (n Node, ok bool, err error) {
+	return s.GetWithTypedData(id, nil)
 }
 
 // GetWithTypedData gets data, but uses a pointer passed into the data parameter to populate the type
 // of the data within the node.
-func (rs *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool, err error) {
+func (s *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool, err error) {
 	n.Data = data
 
 	q := expression.Key("id").Equal(expression.Value(id))
@@ -255,13 +281,13 @@ func (rs *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool,
 	}
 
 	qi := &dynamodb.QueryInput{
-		TableName:                 rs.TableName,
+		TableName:                 s.TableName,
 		KeyConditionExpression:    expr.KeyCondition(),
 		ExpressionAttributeValues: expr.Values(),
 		FilterExpression:          expr.Filter(),
 		ExpressionAttributeNames:  expr.Names(),
 		ConsistentRead:            aws.Bool(true),
-		ReturnConsumedCapacity:    aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity:    aws.String(dynamodb.ReturnConsumedCapacityIndexes),
 	}
 
 	var pageErr error
@@ -272,10 +298,11 @@ func (rs *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool,
 				return false
 			}
 		}
+		s.updateCapacityStats(page.ConsumedCapacity)
 		return true
 	}
 
-	err = rs.Client.QueryPages(qi, page)
+	err = s.Client.QueryPages(qi, page)
 	if err != nil {
 		err = fmt.Errorf("Store.Get: failed to query pages: %v", err)
 		return
@@ -290,9 +317,9 @@ func (rs *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool,
 }
 
 // Delete a node.
-func (rs *Store) Delete(id string) (err error) {
+func (s *Store) Delete(id string) (err error) {
 	// Get the IDs.
-	n, ok, err := rs.Get(id)
+	n, ok, err := s.Get(id)
 	if err != nil {
 		return
 	}
@@ -312,19 +339,22 @@ func (rs *Store) Delete(id string) (err error) {
 			},
 		}
 	}
-	_, err = rs.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*rs.TableName: deleteRequests,
+			*s.TableName: deleteRequests,
 		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
 	})
-	//TODO: Use the consumed capacity.
+	if err != nil {
+		return
+	}
+	s.updateCapacityStats(bwo.ConsumedCapacity...)
 	//TODO: Delete parent edges.
 	return
 }
 
 // DeleteEdge deletes an edge.
-func (rs *Store) DeleteEdge(parent string, child string) (err error) {
+func (s *Store) DeleteEdge(parent string, child string) (err error) {
 	id := getID(parent, child)
 	// Also use the range key.
 	id["child"], err = dynamodbattribute.Marshal(child)
@@ -332,10 +362,14 @@ func (rs *Store) DeleteEdge(parent string, child string) (err error) {
 		return
 	}
 	d := &dynamodb.DeleteItemInput{
-		TableName: rs.TableName,
+		TableName: s.TableName,
 		Key:       id,
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
 	}
-	_, err = rs.Client.DeleteItem(d)
+	dio, err := s.Client.DeleteItem(d)
+	if err != nil {
+		return
+	}
+	s.updateCapacityStats(dio.ConsumedCapacity)
 	return
 }
