@@ -1,0 +1,65 @@
+# Define the interfaces.
+type PageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+}
+
+interface Node {
+  id: ID!
+  parents: Connection
+  children: Connection
+}
+
+interface Connection {
+  edges: [Edge!]
+  pageInfo: PageInfo!
+}
+
+interface Edge {
+  cursor: String!
+  node: Node
+}
+
+# Define implementations.
+type SimpleNode implements Node {
+  id: ID!
+  parent: Node
+  parents: SimpleConnection
+  children: SimpleConnection
+}
+
+type SimpleConnection implements Connection {
+  edges: [SimpleEdge!]
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type SimpleEdge implements Edge {
+  cursor: String!
+  node: Node
+}
+
+# Define queries and mutations.
+union AnyNode = SimpleNode
+
+type Query {
+  get(id: ID!): SimpleNode
+}
+
+input NewNode {
+  id: ID!
+  parents: [ID!]
+  children: [ID!]
+}
+
+input NewEdge {
+  parent: ID! 
+  children: [ID!]!
+}
+
+type Mutation {
+  createNode(node: NewNode!): ID!
+  createEdges(edge: NewEdge!): ID!
+}
