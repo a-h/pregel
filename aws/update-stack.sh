@@ -1,0 +1,1 @@
+aws cloudformation update-stack --stack-name pregelstorelocal --template-body file://stack.yaml

@@ -1,0 +1,1 @@
+aws cloudformation create-stack --stack-name pregelstorelocal --template-body file://stack.yaml

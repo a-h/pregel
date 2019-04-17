@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Resources: 
+  pregelStoreLocal: 
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      AttributeDefinitions: 
+        - 
+          AttributeName: "id"
+          AttributeType: "S"
+        - 
+          AttributeName: "child"
+          AttributeType: "S"
+      KeySchema: 
+        - 
+          AttributeName: "id"
+          KeyType: "HASH"
+        - 
+          AttributeName: "child"
+          KeyType: "RANGE"
+      BillingMode: PAY_PER_REQUEST
+      TableName: "pregelStoreLocal"
+      GlobalSecondaryIndexes: 
+        - 
+          IndexName: "parentsOfChild"
+          KeySchema: 
+            - 
+              AttributeName: "child"
+              KeyType: "HASH"
+            - 
+              AttributeName: "id"
+              KeyType: "RANGE"
+          Projection: 
+            ProjectionType: "KEYS_ONLY"
