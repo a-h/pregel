@@ -8,26 +8,14 @@ Resources:
           AttributeName: "id"
           AttributeType: "S"
         - 
-          AttributeName: "child"
+          AttributeName: "rng"
           AttributeType: "S"
       KeySchema: 
         - 
           AttributeName: "id"
           KeyType: "HASH"
         - 
-          AttributeName: "child"
+          AttributeName: "rng"
           KeyType: "RANGE"
       BillingMode: PAY_PER_REQUEST
       TableName: "pregelStoreLocal"
-      GlobalSecondaryIndexes: 
-        - 
-          IndexName: "parentsOfChild"
-          KeySchema: 
-            - 
-              AttributeName: "child"
-              KeyType: "HASH"
-            - 
-              AttributeName: "id"
-              KeyType: "RANGE"
-          Projection: 
-            ProjectionType: "KEYS_ONLY"

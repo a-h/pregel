@@ -17,7 +17,7 @@ func main() {
 
 	// Create a computer.
 	fmt.Println("Creating computer node")
-	err = s.Put(pregel.NewNode("adrian's mac", computer{
+	err = s.Put(pregel.NewNode("adrian's mac").WithData(computer{
 		Brand:         "Apple",
 		YearPurchased: 2015,
 	}))
@@ -28,13 +28,15 @@ func main() {
 
 	// Create a router and a connection to the mac.
 	fmt.Println("Creating router node")
-	rd := router{
+	routerData := router{
 		SSID: "VM675321",
 	}
-	edge := pregel.NewEdge("adrian's mac", connection{
+	routerToMac := pregel.NewEdge("adrian's mac", connection{
 		Type: "wifi",
 	})
-	err = s.Put(pregel.NewNode("router", rd, edge))
+	err = s.Put(pregel.NewNode("router").
+		WithData(routerData).
+		WithChildren(routerToMac))
 	if err != nil {
 		fmt.Println("error creating router", err)
 		os.Exit(1)
@@ -42,7 +44,8 @@ func main() {
 
 	// Create a PS4 (without any metadata).
 	fmt.Println("Creating ps4")
-	err = s.Put(pregel.NewNode("ps4", computer{}))
+	err = s.Put(pregel.NewNode("ps4").
+		WithData(computer{}))
 	if err != nil {
 		fmt.Println("error creating ps4", err)
 		os.Exit(1)
@@ -57,7 +60,7 @@ func main() {
 
 	// Create a Nintendo Wii-U.
 	fmt.Println("Creating wii node")
-	err = s.Put(pregel.NewNode("wii", computer{}))
+	err = s.Put(pregel.NewNode("wii").WithData(computer{}))
 	if err != nil {
 		fmt.Println("error creating wii", err)
 		os.Exit(1)
@@ -68,6 +71,7 @@ func main() {
 		fmt.Println("error creating a connection from router to wii", err)
 		os.Exit(1)
 	}
+
 	// Delete it.
 	fmt.Println("Deleting wii node")
 	err = s.Delete("wii")
@@ -75,23 +79,6 @@ func main() {
 		fmt.Println("error deleting wii", err)
 		os.Exit(1)
 	}
-
-	// The deletion doesn't currently remove parent edges.
-	fmt.Println("Deleting router to wii edge")
-	err = s.DeleteEdge("router", "wii")
-	if err != nil {
-		fmt.Println("error deleting relationship between router and wii", err)
-		os.Exit(1)
-	}
-
-	// See if we can get the parents of a Node.
-	fmt.Println("Getting parents of ps4")
-	parentIDs, err := s.GetParentsOf("ps4")
-	if err != nil {
-		fmt.Println("error getting PS4 parents", err)
-		os.Exit(1)
-	}
-	fmt.Println("Parents of PS4", parentIDs)
 
 	// Retrieve router data.
 	fmt.Println("Getting router data")
@@ -115,6 +102,42 @@ func main() {
 		os.Exit(1)
 	}
 	bytes, _ := json.Marshal(ps4)
+	fmt.Println(string(bytes))
+
+	// Now disconnect the PS4 from the router.
+	// The deletion doesn't currently remove parent edges.
+	fmt.Println("Deleting router to ps4 edge")
+	err = s.DeleteEdge("router", "ps4")
+	if err != nil {
+		fmt.Println("error deleting relationship between router and ps4", err)
+		os.Exit(1)
+	}
+
+	// Get PS4 data again.
+	fmt.Println("Getting ps4 data")
+	ps4, ok, err = s.Get("ps4")
+	if err != nil {
+		fmt.Println("error finding ps4", err)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Println("could not find ps4")
+		os.Exit(1)
+	}
+	bytes, _ = json.Marshal(ps4)
+	fmt.Println(string(bytes))
+
+	// Check the router has been disconnected too.
+	router, ok, err := s.Get("router")
+	if err != nil {
+		fmt.Println("error finding router", err)
+		os.Exit(1)
+	}
+	if !ok {
+		fmt.Println("could not find router")
+		os.Exit(1)
+	}
+	bytes, _ = json.Marshal(router)
 	fmt.Println(string(bytes))
 
 	fmt.Printf("Capacity units consumed - total: %v, read: %v, write: %v\n", s.ConsumedCapacity, s.ConsumedReadCapacity, s.ConsumedWriteCapacity)
