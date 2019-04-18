@@ -2,25 +2,23 @@
 
 package graph
 
-type AnyNode interface {
-	IsAnyNode()
+import (
+	"github.com/a-h/pregel"
+)
+
+type Connection struct {
+	Edges    []Edge   `json:"edges"`
+	PageInfo PageInfo `json:"pageInfo"`
 }
 
-type Connection interface {
-	IsConnection()
-}
-
-type Edge interface {
-	IsEdge()
-}
-
-type Node interface {
-	IsNode()
+type Edge struct {
+	Cursor string       `json:"cursor"`
+	Node   *pregel.Node `json:"node"`
 }
 
 type NewEdge struct {
-	Parent   string   `json:"parent"`
-	Children []string `json:"children"`
+	Parent string `json:"parent"`
+	Child  string `json:"child"`
 }
 
 type NewNode struct {
@@ -35,28 +33,3 @@ type PageInfo struct {
 	HasPreviousPage bool    `json:"hasPreviousPage"`
 	StartCursor     *string `json:"startCursor"`
 }
-
-type SimpleConnection struct {
-	Edges      []SimpleEdge `json:"edges"`
-	PageInfo   PageInfo     `json:"pageInfo"`
-	TotalCount int          `json:"totalCount"`
-}
-
-func (SimpleConnection) IsConnection() {}
-
-type SimpleEdge struct {
-	Cursor string `json:"cursor"`
-	Node   Node   `json:"node"`
-}
-
-func (SimpleEdge) IsEdge() {}
-
-type SimpleNode struct {
-	ID       string            `json:"id"`
-	Parent   Node              `json:"parent"`
-	Parents  *SimpleConnection `json:"parents"`
-	Children *SimpleConnection `json:"children"`
-}
-
-func (SimpleNode) IsNode()    {}
-func (SimpleNode) IsAnyNode() {}

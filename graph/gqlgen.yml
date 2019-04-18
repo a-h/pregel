@@ -12,3 +12,7 @@ model:
 resolver:
   filename: resolver.go
   type: Resolver
+
+models:
+  Node:
+    model: github.com/a-h/pregel.Node

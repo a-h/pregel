@@ -6,12 +6,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"sync"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/introspection"
+	"github.com/a-h/pregel"
 	"github.com/vektah/gqlparser"
 	"github.com/vektah/gqlparser/ast"
 )
@@ -35,6 +35,7 @@ type Config struct {
 
 type ResolverRoot interface {
 	Mutation() MutationResolver
+	Node() NodeResolver
 	Query() QueryResolver
 }
 
@@ -42,9 +43,25 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	Connection struct {
+		Edges    func(childComplexity int) int
+		PageInfo func(childComplexity int) int
+	}
+
+	Edge struct {
+		Cursor func(childComplexity int) int
+		Node   func(childComplexity int) int
+	}
+
 	Mutation struct {
 		CreateEdges func(childComplexity int, edge NewEdge) int
 		CreateNode  func(childComplexity int, node NewNode) int
+	}
+
+	Node struct {
+		Children func(childComplexity int) int
+		ID       func(childComplexity int) int
+		Parents  func(childComplexity int) int
 	}
 
 	PageInfo struct {
@@ -57,32 +74,18 @@ type ComplexityRoot struct {
 	Query struct {
 		Get func(childComplexity int, id string) int
 	}
-
-	SimpleConnection struct {
-		Edges      func(childComplexity int) int
-		PageInfo   func(childComplexity int) int
-		TotalCount func(childComplexity int) int
-	}
-
-	SimpleEdge struct {
-		Cursor func(childComplexity int) int
-		Node   func(childComplexity int) int
-	}
-
-	SimpleNode struct {
-		Children func(childComplexity int) int
-		ID       func(childComplexity int) int
-		Parent   func(childComplexity int) int
-		Parents  func(childComplexity int) int
-	}
 }
 
 type MutationResolver interface {
 	CreateNode(ctx context.Context, node NewNode) (string, error)
 	CreateEdges(ctx context.Context, edge NewEdge) (string, error)
 }
+type NodeResolver interface {
+	Parents(ctx context.Context, obj *pregel.Node) (*Connection, error)
+	Children(ctx context.Context, obj *pregel.Node) (*Connection, error)
+}
 type QueryResolver interface {
-	Get(ctx context.Context, id string) (*SimpleNode, error)
+	Get(ctx context.Context, id string) (*pregel.Node, error)
 }
 
 type executableSchema struct {
@@ -99,6 +102,34 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 	ec := executionContext{nil, e}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "Connection.Edges":
+		if e.complexity.Connection.Edges == nil {
+			break
+		}
+
+		return e.complexity.Connection.Edges(childComplexity), true
+
+	case "Connection.PageInfo":
+		if e.complexity.Connection.PageInfo == nil {
+			break
+		}
+
+		return e.complexity.Connection.PageInfo(childComplexity), true
+
+	case "Edge.Cursor":
+		if e.complexity.Edge.Cursor == nil {
+			break
+		}
+
+		return e.complexity.Edge.Cursor(childComplexity), true
+
+	case "Edge.Node":
+		if e.complexity.Edge.Node == nil {
+			break
+		}
+
+		return e.complexity.Edge.Node(childComplexity), true
 
 	case "Mutation.CreateEdges":
 		if e.complexity.Mutation.CreateEdges == nil {
@@ -123,6 +154,27 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.CreateNode(childComplexity, args["node"].(NewNode)), true
+
+	case "Node.Children":
+		if e.complexity.Node.Children == nil {
+			break
+		}
+
+		return e.complexity.Node.Children(childComplexity), true
+
+	case "Node.ID":
+		if e.complexity.Node.ID == nil {
+			break
+		}
+
+		return e.complexity.Node.ID(childComplexity), true
+
+	case "Node.Parents":
+		if e.complexity.Node.Parents == nil {
+			break
+		}
+
+		return e.complexity.Node.Parents(childComplexity), true
 
 	case "PageInfo.EndCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
@@ -163,69 +215,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.Get(childComplexity, args["id"].(string)), true
-
-	case "SimpleConnection.Edges":
-		if e.complexity.SimpleConnection.Edges == nil {
-			break
-		}
-
-		return e.complexity.SimpleConnection.Edges(childComplexity), true
-
-	case "SimpleConnection.PageInfo":
-		if e.complexity.SimpleConnection.PageInfo == nil {
-			break
-		}
-
-		return e.complexity.SimpleConnection.PageInfo(childComplexity), true
-
-	case "SimpleConnection.TotalCount":
-		if e.complexity.SimpleConnection.TotalCount == nil {
-			break
-		}
-
-		return e.complexity.SimpleConnection.TotalCount(childComplexity), true
-
-	case "SimpleEdge.Cursor":
-		if e.complexity.SimpleEdge.Cursor == nil {
-			break
-		}
-
-		return e.complexity.SimpleEdge.Cursor(childComplexity), true
-
-	case "SimpleEdge.Node":
-		if e.complexity.SimpleEdge.Node == nil {
-			break
-		}
-
-		return e.complexity.SimpleEdge.Node(childComplexity), true
-
-	case "SimpleNode.Children":
-		if e.complexity.SimpleNode.Children == nil {
-			break
-		}
-
-		return e.complexity.SimpleNode.Children(childComplexity), true
-
-	case "SimpleNode.ID":
-		if e.complexity.SimpleNode.ID == nil {
-			break
-		}
-
-		return e.complexity.SimpleNode.ID(childComplexity), true
-
-	case "SimpleNode.Parent":
-		if e.complexity.SimpleNode.Parent == nil {
-			break
-		}
-
-		return e.complexity.SimpleNode.Parent(childComplexity), true
-
-	case "SimpleNode.Parents":
-		if e.complexity.SimpleNode.Parents == nil {
-			break
-		}
-
-		return e.complexity.SimpleNode.Parents(childComplexity), true
 
 	}
 	return 0, false
@@ -312,46 +301,25 @@ type PageInfo {
   startCursor: String
 }
 
-interface Node {
+type Node {
   id: ID!
   parents: Connection
   children: Connection
 }
 
-interface Connection {
+type Connection {
   edges: [Edge!]
   pageInfo: PageInfo!
 }
 
-interface Edge {
-  cursor: String!
-  node: Node
-}
-
-# Define implementations.
-type SimpleNode implements Node {
-  id: ID!
-  parent: Node
-  parents: SimpleConnection
-  children: SimpleConnection
-}
-
-type SimpleConnection implements Connection {
-  edges: [SimpleEdge!]
-  pageInfo: PageInfo!
-  totalCount: Int!
-}
-
-type SimpleEdge implements Edge {
+type Edge {
   cursor: String!
   node: Node
 }
 
 # Define queries and mutations.
-union AnyNode = SimpleNode
-
 type Query {
-  get(id: ID!): SimpleNode
+  get(id: ID!): Node
 }
 
 input NewNode {
@@ -362,7 +330,7 @@ input NewNode {
 
 input NewEdge {
   parent: ID! 
-  children: [ID!]!
+  child: ID!
 }
 
 type Mutation {
@@ -463,6 +431,108 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 
 // region    **************************** field.gotpl *****************************
 
+func (ec *executionContext) _Connection_edges(ctx context.Context, field graphql.CollectedField, obj *Connection) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Connection",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Edges, nil
+	})
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]Edge)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOEdge2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdge(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Connection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *Connection) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Connection",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PageInfo, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(PageInfo)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNPageInfo2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐPageInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Edge_cursor(ctx context.Context, field graphql.CollectedField, obj *Edge) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Edge",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Cursor, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Edge_node(ctx context.Context, field graphql.CollectedField, obj *Edge) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Edge",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Node, nil
+	})
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*pregel.Node)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalONode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚐNode(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Mutation_createNode(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
@@ -529,6 +599,81 @@ func (ec *executionContext) _Mutation_createEdges(ctx context.Context, field gra
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Node_id(ctx context.Context, field graphql.CollectedField, obj *pregel.Node) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Node",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ID, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Node_parents(ctx context.Context, field graphql.CollectedField, obj *pregel.Node) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Node",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Node().Parents(rctx, obj)
+	})
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*Connection)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐConnection(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Node_children(ctx context.Context, field graphql.CollectedField, obj *pregel.Node) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Node",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Node().Children(rctx, obj)
+	})
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*Connection)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalOConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐConnection(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _PageInfo_endCursor(ctx context.Context, field graphql.CollectedField, obj *PageInfo) graphql.Marshaler {
@@ -658,10 +803,10 @@ func (ec *executionContext) _Query_get(ctx context.Context, field graphql.Collec
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*SimpleNode)
+	res := resTmp.(*pregel.Node)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOSimpleNode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleNode(ctx, field.Selections, res)
+	return ec.marshalONode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚐNode(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
@@ -717,234 +862,6 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleConnection_edges(ctx context.Context, field graphql.CollectedField, obj *SimpleConnection) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleConnection",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Edges, nil
-	})
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.([]SimpleEdge)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOSimpleEdge2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleEdge(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *SimpleConnection) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleConnection",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.PageInfo, nil
-	})
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(PageInfo)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNPageInfo2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐPageInfo(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *SimpleConnection) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleConnection",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.TotalCount, nil
-	})
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(int)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNInt2int(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleEdge_cursor(ctx context.Context, field graphql.CollectedField, obj *SimpleEdge) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleEdge",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Cursor, nil
-	})
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleEdge_node(ctx context.Context, field graphql.CollectedField, obj *SimpleEdge) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleEdge",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Node, nil
-	})
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(Node)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalONode2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNode(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleNode_id(ctx context.Context, field graphql.CollectedField, obj *SimpleNode) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleNode",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.ID, nil
-	})
-	if resTmp == nil {
-		if !ec.HasError(rctx) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNID2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleNode_parent(ctx context.Context, field graphql.CollectedField, obj *SimpleNode) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleNode",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Parent, nil
-	})
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(Node)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalONode2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNode(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleNode_parents(ctx context.Context, field graphql.CollectedField, obj *SimpleNode) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleNode",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Parents, nil
-	})
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*SimpleConnection)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOSimpleConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleConnection(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _SimpleNode_children(ctx context.Context, field graphql.CollectedField, obj *SimpleNode) graphql.Marshaler {
-	ctx = ec.Tracer.StartFieldExecution(ctx, field)
-	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
-	rctx := &graphql.ResolverContext{
-		Object:   "SimpleNode",
-		Field:    field,
-		Args:     nil,
-		IsMethod: false,
-	}
-	ctx = graphql.WithResolverContext(ctx, rctx)
-	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Children, nil
-	})
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*SimpleConnection)
-	rctx.Result = res
-	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalOSimpleConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleConnection(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) graphql.Marshaler {
@@ -1790,9 +1707,9 @@ func (ec *executionContext) unmarshalInputNewEdge(ctx context.Context, v interfa
 			if err != nil {
 				return it, err
 			}
-		case "children":
+		case "child":
 			var err error
-			it.Children, err = ec.unmarshalNID2ᚕstring(ctx, v)
+			it.Child, err = ec.unmarshalNID2string(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -1836,61 +1753,67 @@ func (ec *executionContext) unmarshalInputNewNode(ctx context.Context, v interfa
 
 // region    ************************** interface.gotpl ***************************
 
-func (ec *executionContext) _AnyNode(ctx context.Context, sel ast.SelectionSet, obj *AnyNode) graphql.Marshaler {
-	switch obj := (*obj).(type) {
-	case nil:
-		return graphql.Null
-	case SimpleNode:
-		return ec._SimpleNode(ctx, sel, &obj)
-	case *SimpleNode:
-		return ec._SimpleNode(ctx, sel, obj)
-	default:
-		panic(fmt.Errorf("unexpected type %T", obj))
-	}
-}
-
-func (ec *executionContext) _Connection(ctx context.Context, sel ast.SelectionSet, obj *Connection) graphql.Marshaler {
-	switch obj := (*obj).(type) {
-	case nil:
-		return graphql.Null
-	case SimpleConnection:
-		return ec._SimpleConnection(ctx, sel, &obj)
-	case *SimpleConnection:
-		return ec._SimpleConnection(ctx, sel, obj)
-	default:
-		panic(fmt.Errorf("unexpected type %T", obj))
-	}
-}
-
-func (ec *executionContext) _Edge(ctx context.Context, sel ast.SelectionSet, obj *Edge) graphql.Marshaler {
-	switch obj := (*obj).(type) {
-	case nil:
-		return graphql.Null
-	case SimpleEdge:
-		return ec._SimpleEdge(ctx, sel, &obj)
-	case *SimpleEdge:
-		return ec._SimpleEdge(ctx, sel, obj)
-	default:
-		panic(fmt.Errorf("unexpected type %T", obj))
-	}
-}
-
-func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj *Node) graphql.Marshaler {
-	switch obj := (*obj).(type) {
-	case nil:
-		return graphql.Null
-	case SimpleNode:
-		return ec._SimpleNode(ctx, sel, &obj)
-	case *SimpleNode:
-		return ec._SimpleNode(ctx, sel, obj)
-	default:
-		panic(fmt.Errorf("unexpected type %T", obj))
-	}
-}
-
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
+
+var connectionImplementors = []string{"Connection"}
+
+func (ec *executionContext) _Connection(ctx context.Context, sel ast.SelectionSet, obj *Connection) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, connectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Connection")
+		case "edges":
+			out.Values[i] = ec._Connection_edges(ctx, field, obj)
+		case "pageInfo":
+			out.Values[i] = ec._Connection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var edgeImplementors = []string{"Edge"}
+
+func (ec *executionContext) _Edge(ctx context.Context, sel ast.SelectionSet, obj *Edge) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, edgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Edge")
+		case "cursor":
+			out.Values[i] = ec._Edge_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "node":
+			out.Values[i] = ec._Edge_node(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
 
 var mutationImplementors = []string{"Mutation"}
 
@@ -1917,6 +1840,55 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				invalid = true
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var nodeImplementors = []string{"Node"}
+
+func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj *pregel.Node) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, nodeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Node")
+		case "id":
+			out.Values[i] = ec._Node_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "parents":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Node_parents(ctx, field, obj)
+				return res
+			})
+		case "children":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Node_children(ctx, field, obj)
+				return res
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -1994,102 +1966,6 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
 			out.Values[i] = ec._Query___schema(ctx, field)
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalid {
-		return graphql.Null
-	}
-	return out
-}
-
-var simpleConnectionImplementors = []string{"SimpleConnection", "Connection"}
-
-func (ec *executionContext) _SimpleConnection(ctx context.Context, sel ast.SelectionSet, obj *SimpleConnection) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, simpleConnectionImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	invalid := false
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("SimpleConnection")
-		case "edges":
-			out.Values[i] = ec._SimpleConnection_edges(ctx, field, obj)
-		case "pageInfo":
-			out.Values[i] = ec._SimpleConnection_pageInfo(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalid = true
-			}
-		case "totalCount":
-			out.Values[i] = ec._SimpleConnection_totalCount(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalid = true
-			}
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalid {
-		return graphql.Null
-	}
-	return out
-}
-
-var simpleEdgeImplementors = []string{"SimpleEdge", "Edge"}
-
-func (ec *executionContext) _SimpleEdge(ctx context.Context, sel ast.SelectionSet, obj *SimpleEdge) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, simpleEdgeImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	invalid := false
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("SimpleEdge")
-		case "cursor":
-			out.Values[i] = ec._SimpleEdge_cursor(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalid = true
-			}
-		case "node":
-			out.Values[i] = ec._SimpleEdge_node(ctx, field, obj)
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch()
-	if invalid {
-		return graphql.Null
-	}
-	return out
-}
-
-var simpleNodeImplementors = []string{"SimpleNode", "Node", "AnyNode"}
-
-func (ec *executionContext) _SimpleNode(ctx context.Context, sel ast.SelectionSet, obj *SimpleNode) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, simpleNodeImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	invalid := false
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("SimpleNode")
-		case "id":
-			out.Values[i] = ec._SimpleNode_id(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				invalid = true
-			}
-		case "parent":
-			out.Values[i] = ec._SimpleNode_parent(ctx, field, obj)
-		case "parents":
-			out.Values[i] = ec._SimpleNode_parents(ctx, field, obj)
-		case "children":
-			out.Values[i] = ec._SimpleNode_children(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2354,49 +2230,16 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return graphql.MarshalBoolean(v)
 }
 
+func (ec *executionContext) marshalNEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdge(ctx context.Context, sel ast.SelectionSet, v Edge) graphql.Marshaler {
+	return ec._Edge(ctx, sel, &v)
+}
+
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v interface{}) (string, error) {
 	return graphql.UnmarshalID(v)
 }
 
 func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
 	return graphql.MarshalID(v)
-}
-
-func (ec *executionContext) unmarshalNID2ᚕstring(ctx context.Context, v interface{}) ([]string, error) {
-	var vSlice []interface{}
-	if v != nil {
-		if tmp1, ok := v.([]interface{}); ok {
-			vSlice = tmp1
-		} else {
-			vSlice = []interface{}{v}
-		}
-	}
-	var err error
-	res := make([]string, len(vSlice))
-	for i := range vSlice {
-		res[i], err = ec.unmarshalNID2string(ctx, vSlice[i])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return res, nil
-}
-
-func (ec *executionContext) marshalNID2ᚕstring(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	for i := range v {
-		ret[i] = ec.marshalNID2string(ctx, sel, v[i])
-	}
-
-	return ret
-}
-
-func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v interface{}) (int, error) {
-	return graphql.UnmarshalInt(v)
-}
-
-func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
-	return graphql.MarshalInt(v)
 }
 
 func (ec *executionContext) unmarshalNNewEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNewEdge(ctx context.Context, v interface{}) (NewEdge, error) {
@@ -2409,10 +2252,6 @@ func (ec *executionContext) unmarshalNNewNode2githubᚗcomᚋaᚑhᚋpregelᚋgr
 
 func (ec *executionContext) marshalNPageInfo2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v PageInfo) graphql.Marshaler {
 	return ec._PageInfo(ctx, sel, &v)
-}
-
-func (ec *executionContext) marshalNSimpleEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleEdge(ctx context.Context, sel ast.SelectionSet, v SimpleEdge) graphql.Marshaler {
-	return ec._SimpleEdge(ctx, sel, &v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v interface{}) (string, error) {
@@ -2660,6 +2499,57 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return ec.marshalOBoolean2bool(ctx, sel, *v)
 }
 
+func (ec *executionContext) marshalOConnection2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐConnection(ctx context.Context, sel ast.SelectionSet, v Connection) graphql.Marshaler {
+	return ec._Connection(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalOConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐConnection(ctx context.Context, sel ast.SelectionSet, v *Connection) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Connection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOEdge2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdge(ctx context.Context, sel ast.SelectionSet, v []Edge) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		rctx := &graphql.ResolverContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithResolverContext(ctx, rctx)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+	return ret
+}
+
 func (ec *executionContext) unmarshalOID2ᚕstring(ctx context.Context, v interface{}) ([]string, error) {
 	var vSlice []interface{}
 	if v != nil {
@@ -2692,70 +2582,15 @@ func (ec *executionContext) marshalOID2ᚕstring(ctx context.Context, sel ast.Se
 	return ret
 }
 
-func (ec *executionContext) marshalONode2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNode(ctx context.Context, sel ast.SelectionSet, v Node) graphql.Marshaler {
+func (ec *executionContext) marshalONode2githubᚗcomᚋaᚑhᚋpregelᚐNode(ctx context.Context, sel ast.SelectionSet, v pregel.Node) graphql.Marshaler {
 	return ec._Node(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalOSimpleConnection2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleConnection(ctx context.Context, sel ast.SelectionSet, v SimpleConnection) graphql.Marshaler {
-	return ec._SimpleConnection(ctx, sel, &v)
-}
-
-func (ec *executionContext) marshalOSimpleConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleConnection(ctx context.Context, sel ast.SelectionSet, v *SimpleConnection) graphql.Marshaler {
+func (ec *executionContext) marshalONode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚐNode(ctx context.Context, sel ast.SelectionSet, v *pregel.Node) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._SimpleConnection(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOSimpleEdge2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleEdge(ctx context.Context, sel ast.SelectionSet, v []SimpleEdge) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		rctx := &graphql.ResolverContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithResolverContext(ctx, rctx)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNSimpleEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleEdge(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-	return ret
-}
-
-func (ec *executionContext) marshalOSimpleNode2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleNode(ctx context.Context, sel ast.SelectionSet, v SimpleNode) graphql.Marshaler {
-	return ec._SimpleNode(ctx, sel, &v)
-}
-
-func (ec *executionContext) marshalOSimpleNode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSimpleNode(ctx context.Context, sel ast.SelectionSet, v *SimpleNode) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._SimpleNode(ctx, sel, v)
+	return ec._Node(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOString2string(ctx context.Context, v interface{}) (string, error) {
