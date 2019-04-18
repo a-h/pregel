@@ -40,9 +40,14 @@ type Edge struct {
 }
 
 // NewEdge creates an edge.
-func NewEdge(id string, data interface{}) Edge {
+func NewEdge(id string) Edge {
 	return Edge{
-		ID:   id,
-		Data: data,
+		ID: id,
 	}
+}
+
+// WithData adds data to the edge.
+func (e Edge) WithData(data interface{}) Edge {
+	e.Data = data
+	return e
 }

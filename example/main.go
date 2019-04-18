@@ -31,9 +31,10 @@ func main() {
 	routerData := router{
 		SSID: "VM675321",
 	}
-	routerToMac := pregel.NewEdge("adrian's mac", connection{
-		Type: "wifi",
-	})
+	routerToMac := pregel.NewEdge("adrian's mac").
+		WithData(connection{
+			Type: "wifi",
+		})
 	err = s.Put(pregel.NewNode("router").
 		WithData(routerData).
 		WithChildren(routerToMac))
@@ -52,7 +53,7 @@ func main() {
 	}
 
 	fmt.Println("Adding router to ps4 edges")
-	err = s.PutEdges("router", pregel.NewEdge("ps4", connection{Type: "wired"}))
+	err = s.PutEdges("router", pregel.NewEdge("ps4").WithData(connection{Type: "wired"}))
 	if err != nil {
 		fmt.Println("error creating a wired connection from router to ps4", err)
 		os.Exit(1)
@@ -66,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Creating router to wii edges")
-	err = s.PutEdges("router", pregel.NewEdge("wii", connection{Type: "wifi"}))
+	err = s.PutEdges("router", pregel.NewEdge("wii").WithData(connection{Type: "wifi"}))
 	if err != nil {
 		fmt.Println("error creating a connection from router to wii", err)
 		os.Exit(1)
