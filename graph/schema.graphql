@@ -40,5 +40,5 @@ input NewEdge {
 
 type Mutation {
   createNode(node: NewNode!): ID!
-  createEdges(edge: NewEdge!): ID!
+  createEdge(edge: NewEdge!): ID!
 }

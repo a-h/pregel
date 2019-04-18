@@ -44,8 +44,8 @@ func (pr *PregelMutationResolver) CreateNode(ctx context.Context, node NewNode) 
 	return
 }
 
-// CreateEdges creates edges.
-func (pr *PregelMutationResolver) CreateEdges(ctx context.Context, edge NewEdge) (id string, err error) {
+// CreateEdge creates edges.
+func (pr *PregelMutationResolver) CreateEdge(ctx context.Context, edge NewEdge) (id string, err error) {
 	//TODO: Copy edge data to pregel edge.
 	err = pr.Store.PutEdges(edge.Parent, pregel.NewEdge(edge.Child))
 	if err != nil {
