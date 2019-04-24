@@ -44,8 +44,9 @@ type DirectiveRoot struct {
 
 type ComplexityRoot struct {
 	Connection struct {
-		Edges    func(childComplexity int) int
-		PageInfo func(childComplexity int) int
+		Edges      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
 	}
 
 	Edge struct {
@@ -59,9 +60,9 @@ type ComplexityRoot struct {
 	}
 
 	Node struct {
-		Children func(childComplexity int) int
+		Children func(childComplexity int, first int, after *string) int
 		ID       func(childComplexity int) int
-		Parents  func(childComplexity int) int
+		Parents  func(childComplexity int, first int, after *string) int
 	}
 
 	PageInfo struct {
@@ -81,8 +82,8 @@ type MutationResolver interface {
 	CreateEdge(ctx context.Context, edge NewEdge) (string, error)
 }
 type NodeResolver interface {
-	Parents(ctx context.Context, obj *pregel.Node) (*Connection, error)
-	Children(ctx context.Context, obj *pregel.Node) (*Connection, error)
+	Parents(ctx context.Context, obj *pregel.Node, first int, after *string) (*Connection, error)
+	Children(ctx context.Context, obj *pregel.Node, first int, after *string) (*Connection, error)
 }
 type QueryResolver interface {
 	Get(ctx context.Context, id string) (*pregel.Node, error)
@@ -116,6 +117,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Connection.PageInfo(childComplexity), true
+
+	case "Connection.TotalCount":
+		if e.complexity.Connection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.Connection.TotalCount(childComplexity), true
 
 	case "Edge.Cursor":
 		if e.complexity.Edge.Cursor == nil {
@@ -160,7 +168,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		return e.complexity.Node.Children(childComplexity), true
+		args, err := ec.field_Node_children_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Node.Children(childComplexity, args["first"].(int), args["after"].(*string)), true
 
 	case "Node.ID":
 		if e.complexity.Node.ID == nil {
@@ -174,7 +187,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			break
 		}
 
-		return e.complexity.Node.Parents(childComplexity), true
+		args, err := ec.field_Node_parents_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Node.Parents(childComplexity, args["first"].(int), args["after"].(*string)), true
 
 	case "PageInfo.EndCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
@@ -303,13 +321,14 @@ type PageInfo {
 
 type Node {
   id: ID!
-  parents: Connection
-  children: Connection
+  parents(first: Int!, after: String): Connection
+  children(first: Int!, after: String): Connection
 }
 
 type Connection {
   edges: [Edge!]
   pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 type Edge {
@@ -368,6 +387,50 @@ func (ec *executionContext) field_Mutation_createNode_args(ctx context.Context, 
 		}
 	}
 	args["node"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Node_children_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int
+	if tmp, ok := rawArgs["first"]; ok {
+		arg0, err = ec.unmarshalNInt2int(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["first"] = arg0
+	var arg1 *string
+	if tmp, ok := rawArgs["after"]; ok {
+		arg1, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["after"] = arg1
+	return args, nil
+}
+
+func (ec *executionContext) field_Node_parents_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 int
+	if tmp, ok := rawArgs["first"]; ok {
+		arg0, err = ec.unmarshalNInt2int(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["first"] = arg0
+	var arg1 *string
+	if tmp, ok := rawArgs["after"]; ok {
+		arg1, err = ec.unmarshalOString2ᚖstring(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["after"] = arg1
 	return args, nil
 }
 
@@ -480,6 +543,33 @@ func (ec *executionContext) _Connection_pageInfo(ctx context.Context, field grap
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalNPageInfo2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐPageInfo(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Connection_totalCount(ctx context.Context, field graphql.CollectedField, obj *Connection) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Connection",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.TotalCount, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNInt2int(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Edge_cursor(ctx context.Context, field graphql.CollectedField, obj *Edge) graphql.Marshaler {
@@ -638,10 +728,17 @@ func (ec *executionContext) _Node_parents(ctx context.Context, field graphql.Col
 		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Node_parents_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Node().Parents(rctx, obj)
+		return ec.resolvers.Node().Parents(rctx, obj, args["first"].(int), args["after"].(*string))
 	})
 	if resTmp == nil {
 		return graphql.Null
@@ -662,10 +759,17 @@ func (ec *executionContext) _Node_children(ctx context.Context, field graphql.Co
 		IsMethod: true,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Node_children_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Node().Children(rctx, obj)
+		return ec.resolvers.Node().Children(rctx, obj, args["first"].(int), args["after"].(*string))
 	})
 	if resTmp == nil {
 		return graphql.Null
@@ -1775,6 +1879,11 @@ func (ec *executionContext) _Connection(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				invalid = true
 			}
+		case "totalCount":
+			out.Values[i] = ec._Connection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2240,6 +2349,14 @@ func (ec *executionContext) unmarshalNID2string(ctx context.Context, v interface
 
 func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
 	return graphql.MarshalID(v)
+}
+
+func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v interface{}) (int, error) {
+	return graphql.UnmarshalInt(v)
+}
+
+func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
+	return graphql.MarshalInt(v)
 }
 
 func (ec *executionContext) unmarshalNNewEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNewEdge(ctx context.Context, v interface{}) (NewEdge, error) {

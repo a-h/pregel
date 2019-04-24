@@ -2,6 +2,9 @@ package graph
 
 import (
 	"context"
+	"fmt"
+
+	"github.com/a-h/pregel/graph/gqlid"
 
 	"github.com/a-h/pregel"
 )
@@ -61,22 +64,60 @@ type PregelNodeResolver struct {
 }
 
 // Parents of the Node.
-func (r *PregelNodeResolver) Parents(ctx context.Context, obj *pregel.Node) (c *Connection, err error) {
-	return createConnectionFrom(r.Store, obj.Parents)
+func (r *PregelNodeResolver) Parents(ctx context.Context, obj *pregel.Node, first int, after *string) (c *Connection, err error) {
+	return createConnectionFrom(r.Store, obj.Parents, first, after)
 }
 
 // Children of the Node.
-func (r *PregelNodeResolver) Children(ctx context.Context, obj *pregel.Node) (*Connection, error) {
-	return createConnectionFrom(r.Store, obj.Children)
+func (r *PregelNodeResolver) Children(ctx context.Context, obj *pregel.Node, first int, after *string) (*Connection, error) {
+	return createConnectionFrom(r.Store, obj.Children, first, after)
 }
 
-func createConnectionFrom(store *pregel.Store, edges []pregel.Edge) (c *Connection, err error) {
+func filterEdges(edges []pregel.Edge, first int, after *string) (filtered []pregel.Edge, pi PageInfo) {
+	start, end := 0, len(edges)
+	if after != nil {
+		afterID, err := gqlid.Decode(*after)
+		if err == nil {
+			for i, e := range edges {
+				if e.ID == afterID {
+					start = i + 1
+					pi.HasPreviousPage = true
+					break
+				}
+			}
+		}
+	}
+	if first > 0 {
+		end = start + first
+		if end > len(edges) {
+			end = len(edges)
+		}
+		if end < len(edges) {
+			pi.HasNextPage = true
+		}
+	}
+	fmt.Println("getting start end", start, end, len(edges))
+	if start != end {
+		filtered = edges[start:end]
+	}
+	if len(filtered) > 0 {
+		sc := gqlid.Encode(filtered[0].ID)
+		pi.StartCursor = &sc
+		ec := gqlid.Encode(filtered[len(filtered)-1].ID)
+		pi.EndCursor = &ec
+	}
+	return
+}
+
+func createConnectionFrom(store *pregel.Store, edges []pregel.Edge, first int, after *string) (c *Connection, err error) {
 	if len(edges) == 0 {
 		return
 	}
 	c = &Connection{
 		Edges: []Edge{},
 	}
+	edges, c.PageInfo = filterEdges(edges, first, after)
+	c.TotalCount = len(edges)
 	for _, e := range edges {
 		//TODO: Implement a loader to reduce the number of DynamoDB queries and to multithread GET operations.
 		n, ok, nErr := store.Get(e.ID)
@@ -88,16 +129,11 @@ func createConnectionFrom(store *pregel.Store, edges []pregel.Edge) (c *Connecti
 			return
 		}
 		ee := Edge{
-			Cursor: "abc", //TODO: Implement an opaque cursor.
+			Cursor: gqlid.Encode(n.ID),
 			// Data: child.Data, // TODO: Add data to the edge.
 			Node: &n,
 		}
 		c.Edges = append(c.Edges, ee)
-		c.PageInfo.EndCursor = &ee.Cursor
-		// TODO: Populate the cursor data.
-		// c.PageInfo.HasNextPage = false
-		// c.PageInfo.HasPreviousPage = false
-		// c.PageInfo.StartCursor = ""
 	}
 	return
 }

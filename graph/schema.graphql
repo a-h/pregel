@@ -8,13 +8,14 @@ type PageInfo {
 
 type Node {
   id: ID!
-  parents: Connection
-  children: Connection
+  parents(first: Int!, after: String): Connection
+  children(first: Int!, after: String): Connection
 }
 
 type Connection {
   edges: [Edge!]
   pageInfo: PageInfo!
+  totalCount: Int!
 }
 
 type Edge {

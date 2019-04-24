@@ -7,8 +7,9 @@ import (
 )
 
 type Connection struct {
-	Edges    []Edge   `json:"edges"`
-	PageInfo PageInfo `json:"pageInfo"`
+	Edges      []Edge   `json:"edges"`
+	PageInfo   PageInfo `json:"pageInfo"`
+	TotalCount int      `json:"totalCount"`
 }
 
 type Edge struct {
