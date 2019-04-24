@@ -2,7 +2,6 @@ package graph
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/a-h/pregel/graph/gqlid"
 
@@ -96,7 +95,6 @@ func filterEdges(edges []pregel.Edge, first int, after *string) (filtered []preg
 			pi.HasNextPage = true
 		}
 	}
-	fmt.Println("getting start end", start, end, len(edges))
 	if start != end {
 		filtered = edges[start:end]
 	}
