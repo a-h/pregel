@@ -2,6 +2,8 @@ package graph
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/a-h/pregel/graph/gqlid"
 
@@ -58,18 +60,16 @@ func (pr *PregelMutationResolver) CreateEdge(ctx context.Context, edge NewEdge) 
 }
 
 // PregelNodeResolver uses pregel to get the node's parents and children.
-type PregelNodeResolver struct {
-	Store *pregel.Store
-}
+type PregelNodeResolver struct{}
 
 // Parents of the Node.
 func (r *PregelNodeResolver) Parents(ctx context.Context, obj *pregel.Node, first int, after *string) (c *Connection, err error) {
-	return createConnectionFrom(r.Store, obj.Parents, first, after)
+	return createConnectionFrom(ctx, obj.Parents, first, after)
 }
 
 // Children of the Node.
 func (r *PregelNodeResolver) Children(ctx context.Context, obj *pregel.Node, first int, after *string) (*Connection, error) {
-	return createConnectionFrom(r.Store, obj.Children, first, after)
+	return createConnectionFrom(ctx, obj.Children, first, after)
 }
 
 func filterEdges(edges []pregel.Edge, first int, after *string) (filtered []pregel.Edge, pi PageInfo) {
@@ -107,7 +107,7 @@ func filterEdges(edges []pregel.Edge, first int, after *string) (filtered []preg
 	return
 }
 
-func createConnectionFrom(store *pregel.Store, edges []pregel.Edge, first int, after *string) (c *Connection, err error) {
+func createConnectionFrom(ctx context.Context, edges []pregel.Edge, first int, after *string) (c *Connection, err error) {
 	if len(edges) == 0 {
 		return
 	}
@@ -116,40 +116,45 @@ func createConnectionFrom(store *pregel.Store, edges []pregel.Edge, first int, a
 	}
 	edges, c.PageInfo = filterEdges(edges, first, after)
 	c.TotalCount = len(edges)
-	for _, e := range edges {
-		//TODO: Implement a loader to reduce the number of DynamoDB queries and to multithread GET operations.
-		n, ok, nErr := store.Get(e.ID)
-		if nErr != nil {
-			err = nErr
-			return
-		}
-		if !ok {
-			return
-		}
+
+	keys := make([]string, len(edges))
+	for i, e := range edges {
+		keys[i] = e.ID
+	}
+
+	nodes, errs := FromContext(ctx).LoadAll(keys)
+	err = joinErrs(errs)
+	if err != nil {
+		return
+	}
+	for _, n := range nodes {
 		ee := Edge{
 			Cursor: gqlid.Encode(n.ID),
 			// Data: child.Data, // TODO: Add data to the edge.
-			Node: &n,
+			Node: n,
 		}
 		c.Edges = append(c.Edges, ee)
 	}
 	return
 }
 
-// PregelQueryResolver resolves queries using pregel.
-type PregelQueryResolver struct {
-	Store *pregel.Store
+func joinErrs(errs []error) error {
+	var messages []string
+	for _, e := range errs {
+		if e != nil {
+			messages = append(messages, e.Error())
+		}
+	}
+	if len(messages) > 0 {
+		return errors.New(strings.Join(messages, ", "))
+	}
+	return nil
 }
+
+// PregelQueryResolver resolves queries using pregel.
+type PregelQueryResolver struct{}
 
 // Get a node by its ID.
 func (pr *PregelQueryResolver) Get(ctx context.Context, id string) (n *pregel.Node, err error) {
-	nn, ok, err := pr.Store.Get(id)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return
-	}
-	n = &nn
-	return
+	return FromContext(ctx).Load(id)
 }

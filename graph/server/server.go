@@ -28,15 +28,15 @@ func main() {
 		MutationResolver: &graph.PregelMutationResolver{
 			Store: store,
 		},
-		NodeResolver: &graph.PregelNodeResolver{
-			Store: store,
-		},
-		QueryResolver: &graph.PregelQueryResolver{
-			Store: store,
-		},
+		NodeResolver:  &graph.PregelNodeResolver{},
+		QueryResolver: &graph.PregelQueryResolver{},
 	}
 
-	http.Handle("/query", handler.GraphQL(graph.NewExecutableSchema(graph.Config{Resolvers: root})))
+	h := handler.GraphQL(graph.NewExecutableSchema(graph.Config{Resolvers: root}))
+	statsLogger := func(stats graph.NodeDataLoaderStats) {
+		log.Printf("stats: %+v\n", stats)
+	}
+	http.Handle("/query", graph.WithNodeDataloaderMiddleware(store, statsLogger, h))
 
 	log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
