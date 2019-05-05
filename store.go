@@ -3,7 +3,9 @@ package pregel
 import (
 	"errors"
 	"fmt"
+	"reflect"
 
+	"github.com/a-h/pregel/rangefield"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -23,6 +25,7 @@ func NewStore(region, tableName string) (store *Store, err error) {
 	store = &Store{
 		Client:    dynamodb.New(sess),
 		TableName: aws.String(tableName),
+		DataTypes: make(map[string]func() interface{}),
 	}
 	return
 }
@@ -34,18 +37,39 @@ type Store struct {
 	ConsumedCapacity      float64
 	ConsumedReadCapacity  float64
 	ConsumedWriteCapacity float64
+	DataTypes             map[string]func() interface{}
 }
 
-func convertToRecords(n Node) (nodeRecord map[string]*dynamodb.AttributeValue, edgeRecords []map[string]*dynamodb.AttributeValue, err error) {
-	nodeRecord, err = newNodeRecord(n.ID, n.Data)
-	if err != nil {
-		return
+// RegisterDataType registers a data type.
+func (s *Store) RegisterDataType(f func() interface{}) {
+	v := f()
+	t := reflect.TypeOf(v)
+	name := t.Name()
+	if t.Kind() == reflect.Ptr {
+		name = t.Elem().Name()
+	}
+	s.DataTypes[name] = f
+}
+
+func convertToRecords(n Node) (nodeRecord map[string]*dynamodb.AttributeValue,
+	nodeDataRecords, edgeRecords, edgeDataRecords []map[string]*dynamodb.AttributeValue, err error) {
+	nodeRecord = newNodeRecord(n.ID)
+	// Get the node data records.
+	for k, v := range n.Data {
+		k := k
+		v := v
+		dr, dErr := newDataRecord(n.ID, rangefield.NodeData{DataType: k}, k, v)
+		if dErr != nil {
+			err = dErr
+			return
+		}
+		nodeDataRecords = append(nodeDataRecords, dr)
 	}
 	edgeRecords, err = convertNodeEdgesToRecords(n.ID, n.Children, n.Parents)
 	return
 }
 
-func convertNodeEdgesToRecords(id string, children []Edge, parents []Edge) (edgeRecords []map[string]*dynamodb.AttributeValue, err error) {
+func convertNodeEdgesToRecords(id string, children []*Edge, parents []*Edge) (edgeRecords []map[string]*dynamodb.AttributeValue, err error) {
 	// Add parent to child relationship.
 	childRecords, err := convertEdgesToRecords(id, children, newChildRecord, newParentRecord)
 	if err != nil {
@@ -63,7 +87,7 @@ func convertNodeEdgesToRecords(id string, children []Edge, parents []Edge) (edge
 	return
 }
 
-func convertEdgesToRecords(principal string, edges []Edge, fromPrincipal recordCreator, toPrincipal recordCreator) (edgeRecords []map[string]*dynamodb.AttributeValue, err error) {
+func convertEdgesToRecords(principal string, edges []*Edge, fromPrincipal recordCreator, toPrincipal recordCreator) (edgeRecords []map[string]*dynamodb.AttributeValue, err error) {
 	for _, e := range edges {
 		e := e
 
@@ -72,20 +96,20 @@ func convertEdgesToRecords(principal string, edges []Edge, fromPrincipal recordC
 			err = nErr
 			return
 		}
-		edgeRecords = append(edgeRecords, er)
+		edgeRecords = append(edgeRecords, er...)
 
 		er, nErr = toPrincipal(principal, e.ID, e.Data)
 		if nErr != nil {
 			err = nErr
 			return
 		}
-		edgeRecords = append(edgeRecords, er)
+		edgeRecords = append(edgeRecords, er...)
 	}
 	return
 }
 
 func getWriteRequests(n Node) (requests []*dynamodb.WriteRequest, err error) {
-	r, er, err := convertToRecords(n)
+	r, ndr, er, edr, err := convertToRecords(n)
 	if err != nil {
 		return
 	}
@@ -95,12 +119,30 @@ func getWriteRequests(n Node) (requests []*dynamodb.WriteRequest, err error) {
 			Item: r,
 		},
 	})
+	// Add the node data.
+	for _, nd := range ndr {
+		nd := nd
+		requests = append(requests, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{
+				Item: nd,
+			},
+		})
+	}
 	// Add the edges.
 	for _, e := range er {
 		e := e
 		requests = append(requests, &dynamodb.WriteRequest{
 			PutRequest: &dynamodb.PutRequest{
 				Item: e,
+			},
+		})
+	}
+	// Add the edge data.
+	for _, ed := range edr {
+		ed := ed
+		requests = append(requests, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{
+				Item: ed,
 			},
 		})
 	}
@@ -147,7 +189,7 @@ func (s *Store) Put(nodes ...Node) (err error) {
 }
 
 // PutEdges into the store.
-func (s *Store) PutEdges(parent string, edges ...Edge) (err error) {
+func (s *Store) PutEdges(parent string, edges ...*Edge) (err error) {
 	records, err := convertNodeEdgesToRecords(parent, edges, nil)
 	if err != nil {
 		return
@@ -173,13 +215,13 @@ func (s *Store) PutEdges(parent string, edges ...Edge) (err error) {
 	return
 }
 
-func getID(id string, t recordType, rangeKey string) map[string]*dynamodb.AttributeValue {
+func getID(id string, rangeKey rangefield.RangeField) map[string]*dynamodb.AttributeValue {
 	return map[string]*dynamodb.AttributeValue{
 		fieldID: {
 			S: aws.String(id),
 		},
 		fieldRange: {
-			S: aws.String(rangeField(t, rangeKey)),
+			S: aws.String(rangeKey.Encode()),
 		},
 	}
 }
@@ -187,15 +229,15 @@ func getID(id string, t recordType, rangeKey string) map[string]*dynamodb.Attrib
 var errRecordIsMissingARangeField = errors.New("record is missing a range field")
 var errRecordTypeFieldIsNil = errors.New("the record's range field is nil")
 
-func errRecordTypeFieldUnknown(rt recordType) error {
-	return fmt.Errorf("record type of '%s' is unknown", rt)
+func errRecordTypeFieldUnknown(rt rangefield.RangeField) error {
+	return fmt.Errorf("record type of '%T' is unknown", rt)
 }
 
-func errRecordTypeFieldUnhandled(rt recordType) error {
-	return fmt.Errorf("record type of '%s' is not handled", rt)
+func errRecordTypeFieldUnhandled(rt rangefield.RangeField) error {
+	return fmt.Errorf("record type of '%T' is not handled", rt)
 }
 
-func populateNodeFromRecord(itm map[string]*dynamodb.AttributeValue, n *Node) error {
+func (s Store) populateNodeFromRecord(itm map[string]*dynamodb.AttributeValue, n *Node) error {
 	tf, hasType := itm[fieldRange]
 	if !hasType {
 		return errRecordIsMissingARangeField
@@ -203,57 +245,82 @@ func populateNodeFromRecord(itm map[string]*dynamodb.AttributeValue, n *Node) er
 	if tf.S == nil {
 		return errRecordTypeFieldIsNil
 	}
-	rt, id, ok := rangeFieldSplit(*tf.S)
+	f, ok := rangefield.Decode(*tf.S)
 	if !ok {
-		return errRecordTypeFieldUnknown(rt)
+		return errRecordTypeFieldUnknown(f)
 	}
-	switch rt {
-	case recordTypeNode:
-		return populateNodeFromNodeRecord(itm, n)
-	case recordTypeChild:
-		e, err := convertEdgeRecordToEdge(itm, id)
-		if err != nil {
-			return err
-		}
-		n.Children = append(n.Children, e)
+	switch rf := f.(type) {
+	case rangefield.Node:
+		n.ID = *itm[fieldID].S
 		return nil
-	case recordTypeParent:
-		e, err := convertEdgeRecordToEdge(itm, id)
-		if err != nil {
-			return err
+	case rangefield.NodeData:
+		typeName := *itm[fieldRecordDataType].S
+		f, ok := s.DataTypes[typeName]
+		if !ok {
+			f = func() interface{} { return map[string]interface{}{} }
 		}
-		n.Parents = append(n.Parents, e)
+		v := f()
+		err := s.putData(itm, v)
+		n.Data[typeName] = v
+		return err
+	case rangefield.Child:
+		if e := n.GetChild(rf.Child); e == nil {
+			n.Children = append(n.Children, NewEdge(rf.Child))
+		}
 		return nil
+	case rangefield.ChildData:
+		e := n.GetChild(rf.Child)
+		if e == nil {
+			e = NewEdge(rf.Child)
+			n.Children = append(n.Children, e)
+		}
+
+		typeName := *itm[fieldRecordDataType].S
+		f, ok := s.DataTypes[typeName]
+		if !ok {
+			f = func() interface{} { return map[string]interface{}{} }
+		}
+		v := f()
+		err := s.putData(itm, v)
+		e.Data[typeName] = v
+		return err
+	case rangefield.Parent:
+		if e := n.GetParent(rf.Parent); e == nil {
+			n.Parents = append(n.Parents, NewEdge(rf.Parent))
+		}
+		return nil
+	case rangefield.ParentData:
+		e := n.GetParent(rf.Parent)
+		if e == nil {
+			e = NewEdge(rf.Parent)
+			n.Parents = append(n.Parents, e)
+		}
+
+		typeName := *itm[fieldRecordDataType].S
+		f, ok := s.DataTypes[typeName]
+		if !ok {
+			f = func() interface{} { return map[string]interface{}{} }
+		}
+		v := f()
+		err := s.putData(itm, v)
+		e.Data[typeName] = v
+		return err
 	default:
-		return errRecordTypeFieldUnhandled(rt)
+		return errRecordTypeFieldUnhandled(rf)
 	}
 }
 
-func populateNodeFromNodeRecord(itm map[string]*dynamodb.AttributeValue, n *Node) (err error) {
-	n.ID = *itm[fieldID].S
+func (s Store) putData(itm map[string]*dynamodb.AttributeValue, into interface{}) (err error) {
 	delete(itm, fieldID)
 	delete(itm, fieldRange)
-	err = dynamodbattribute.UnmarshalMap(itm, &n.Data)
-	return
-}
-
-func convertEdgeRecordToEdge(itm map[string]*dynamodb.AttributeValue, id string) (e Edge, err error) {
-	e.ID = id
-	delete(itm, fieldID)
-	delete(itm, fieldRange)
-	err = dynamodbattribute.UnmarshalMap(itm, &e.Data)
+	delete(itm, fieldRecordDataType)
+	err = dynamodbattribute.UnmarshalMap(itm, into)
 	return
 }
 
 // Get retrieves data from DynamoDB.
 func (s *Store) Get(id string) (n Node, ok bool, err error) {
-	return s.GetWithTypedData(id, nil)
-}
-
-// GetWithTypedData gets data, but uses a pointer passed into the data parameter to populate the type
-// of the data within the node.
-func (s *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool, err error) {
-	n.Data = data
+	n = NewNode("")
 
 	q := expression.Key(fieldID).Equal(expression.Value(id))
 
@@ -278,7 +345,7 @@ func (s *Store) GetWithTypedData(id string, data interface{}) (n Node, ok bool, 
 	var pageErr error
 	page := func(page *dynamodb.QueryOutput, lastPage bool) bool {
 		for _, itm := range page.Items {
-			pageErr = populateNodeFromRecord(itm, &n)
+			pageErr = s.populateNodeFromRecord(itm, &n)
 			if pageErr != nil {
 				return false
 			}
@@ -311,10 +378,11 @@ func (s *Store) Delete(id string) (err error) {
 	if !ok {
 		return
 	}
+
 	deleteRequests := []*dynamodb.WriteRequest{
 		&dynamodb.WriteRequest{
 			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(n.ID, recordTypeNode, nodeRecordChildConstant),
+				Key: getID(n.ID, rangefield.Node{}),
 			},
 		},
 	}
@@ -322,12 +390,12 @@ func (s *Store) Delete(id string) (err error) {
 		deleteRequests = append(deleteRequests,
 			&dynamodb.WriteRequest{
 				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(n.ID, recordTypeChild, e.ID),
+					Key: getID(n.ID, rangefield.Child{Child: e.ID}),
 				},
 			},
 			&dynamodb.WriteRequest{
 				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(e.ID, recordTypeParent, n.ID),
+					Key: getID(e.ID, rangefield.Parent{Parent: n.ID}),
 				},
 			})
 	}
@@ -335,12 +403,12 @@ func (s *Store) Delete(id string) (err error) {
 		deleteRequests = append(deleteRequests,
 			&dynamodb.WriteRequest{
 				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(n.ID, recordTypeParent, e.ID),
+					Key: getID(n.ID, rangefield.Parent{Parent: e.ID}),
 				},
 			},
 			&dynamodb.WriteRequest{
 				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(e.ID, recordTypeChild, n.ID),
+					Key: getID(e.ID, rangefield.Child{Child: n.ID}),
 				},
 			})
 	}
@@ -362,12 +430,12 @@ func (s *Store) DeleteEdge(parent string, child string) (err error) {
 	deleteRequests := []*dynamodb.WriteRequest{
 		&dynamodb.WriteRequest{
 			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(parent, recordTypeChild, child),
+				Key: getID(parent, rangefield.Child{Child: child}),
 			},
 		},
 		&dynamodb.WriteRequest{
 			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(child, recordTypeParent, parent),
+				Key: getID(child, rangefield.Parent{Parent: parent}),
 			},
 		},
 	}

@@ -1,9 +1,7 @@
 package pregel
 
 import (
-	"reflect"
-	"strings"
-
+	"github.com/a-h/pregel/rangefield"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
@@ -15,60 +13,56 @@ const (
 	fieldRecordDataType = "t"
 )
 
-type recordType string
-
-const (
-	recordTypeNode   recordType = "node"
-	recordTypeChild  recordType = "child"
-	recordTypeParent recordType = "parent"
-)
-
-func rangeField(t recordType, value string) string {
-	if t == recordTypeNode {
-		return string(recordTypeNode)
-	}
-	return string(t) + "/" + value
+func newNodeRecord(id string) (r map[string]*dynamodb.AttributeValue) {
+	return newRecord(id, rangefield.Node{})
 }
 
-func rangeFieldSplit(field string) (rt recordType, value string, ok bool) {
-	if field == string(recordTypeNode) {
-		rt = recordTypeNode
-		ok = true
-		return
+type recordCreator func(from, to string, data Data) (r []map[string]*dynamodb.AttributeValue, err error)
+
+func newChildRecord(parent, child string, data Data) (r []map[string]*dynamodb.AttributeValue, err error) {
+	r = append(r, newRecord(parent, rangefield.Child{Child: child}))
+	for k, v := range data {
+		k := k
+		v := v
+		dr, dErr := newDataRecord(parent, rangefield.ChildData{Child: child, DataType: k}, k, v)
+		if dErr != nil {
+			err = dErr
+			return
+		}
+		r = append(r, dr)
 	}
-	res := strings.SplitN(field, "/", 2)
-	rt = recordType(res[0])
-	ok = rt == recordTypeNode || rt == recordTypeParent || rt == recordTypeChild
-	value = res[1]
 	return
 }
 
-// The record structure here uses ID as the hash key and Child as the range key.
-const nodeRecordChildConstant = ""
-
-func newNodeRecord(id string, data interface{}) (r map[string]*dynamodb.AttributeValue, err error) {
-	return newRecord(id, rangeField(recordTypeNode, nodeRecordChildConstant), data)
+func newParentRecord(parent, child string, data Data) (r []map[string]*dynamodb.AttributeValue, err error) {
+	r = append(r, newRecord(child, rangefield.Parent{Parent: parent}))
+	for k, v := range data {
+		k := k
+		v := v
+		dr, dErr := newDataRecord(child, rangefield.ParentData{Parent: parent, DataType: k}, k, v)
+		if dErr != nil {
+			err = dErr
+			return
+		}
+		r = append(r, dr)
+	}
+	return
 }
 
-type recordCreator func(from, to string, data interface{}) (r map[string]*dynamodb.AttributeValue, err error)
-
-func newChildRecord(parent, child string, data interface{}) (r map[string]*dynamodb.AttributeValue, err error) {
-	return newRecord(parent, rangeField(recordTypeChild, child), data)
+func newRecord(id string, rangeKey rangefield.RangeField) (r map[string]*dynamodb.AttributeValue) {
+	r = make(map[string]*dynamodb.AttributeValue)
+	r[fieldID] = &dynamodb.AttributeValue{S: &id}
+	r[fieldRange] = &dynamodb.AttributeValue{S: aws.String(rangeKey.Encode())}
+	return
 }
 
-func newParentRecord(parent, child string, data interface{}) (r map[string]*dynamodb.AttributeValue, err error) {
-	return newRecord(child, rangeField(recordTypeParent, parent), data)
-}
-
-func newRecord(id, rangeKey string, data interface{}) (r map[string]*dynamodb.AttributeValue, err error) {
-	r, err = dynamodbattribute.MarshalMap(data)
+func newDataRecord(id string, rangeKey rangefield.RangeField, key string, value interface{}) (r map[string]*dynamodb.AttributeValue, err error) {
+	r, err = dynamodbattribute.MarshalMap(value)
 	if err != nil {
 		return
 	}
 	r[fieldID] = &dynamodb.AttributeValue{S: &id}
-	if data != nil {
-		r[fieldRecordDataType] = &dynamodb.AttributeValue{S: aws.String(reflect.TypeOf(data).Name())}
-	}
-	r[fieldRange] = &dynamodb.AttributeValue{S: &rangeKey}
+	r[fieldRange] = &dynamodb.AttributeValue{S: aws.String(rangeKey.Encode())}
+	r[fieldRecordDataType] = &dynamodb.AttributeValue{S: aws.String(key)}
 	return
 }

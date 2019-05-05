@@ -15,6 +15,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Register the store's types.
+	s.RegisterDataType(func() interface{} {
+		return &computer{}
+	})
+	s.RegisterDataType(func() interface{} {
+		return &router{}
+	})
+	s.RegisterDataType(func() interface{} {
+		return &connection{}
+	})
+
 	// Create a computer.
 	fmt.Println("Creating computer node")
 	err = s.Put(pregel.NewNode("adrian's mac").WithData(computer{
@@ -41,6 +52,15 @@ func main() {
 	if err != nil {
 		fmt.Println("error creating router", err)
 		os.Exit(1)
+	}
+
+	routerNode, _, err := s.Get("router")
+	if err != nil {
+		fmt.Println("error getting router", err)
+		os.Exit(1)
+	}
+	for _, child := range routerNode.Children {
+		fmt.Printf("child: %+v\n", child)
 	}
 
 	// Create a PS4 (without any metadata).
@@ -83,12 +103,12 @@ func main() {
 
 	// Retrieve router data.
 	fmt.Println("Getting router data")
-	n, _, err := s.GetWithTypedData("router", &router{})
+	n, _, err := s.Get("router")
 	if err != nil {
 		fmt.Println("error getting router", err)
 		os.Exit(1)
 	}
-	r := n.Data.(*router)
+	r := n.Data["router"].(*router)
 	fmt.Println("SSID of router:", r.SSID)
 
 	// Just get the PS4 data.
