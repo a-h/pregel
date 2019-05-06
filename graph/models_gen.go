@@ -6,6 +6,14 @@ import (
 	"github.com/a-h/pregel"
 )
 
+type EdgeDataItem interface {
+	IsEdgeDataItem()
+}
+
+type NodeDataItem interface {
+	IsNodeDataItem()
+}
+
 type Connection struct {
 	Edges      []Edge   `json:"edges"`
 	PageInfo   PageInfo `json:"pageInfo"`
@@ -13,19 +21,22 @@ type Connection struct {
 }
 
 type Edge struct {
-	Cursor string       `json:"cursor"`
-	Node   *pregel.Node `json:"node"`
+	Cursor string         `json:"cursor"`
+	Node   *pregel.Node   `json:"node"`
+	Data   []EdgeDataItem `json:"data"`
 }
 
-type NewEdge struct {
-	Parent string `json:"parent"`
-	Child  string `json:"child"`
+type Location struct {
+	Lng float64 `json:"lng"`
+	Lat float64 `json:"lat"`
 }
 
-type NewNode struct {
-	ID       string   `json:"id"`
-	Parents  []string `json:"parents"`
-	Children []string `json:"children"`
+func (Location) IsNodeDataItem() {}
+func (Location) IsEdgeDataItem() {}
+
+type LocationInput struct {
+	Lng float64 `json:"lng"`
+	Lat float64 `json:"lat"`
 }
 
 type PageInfo struct {
@@ -33,4 +44,61 @@ type PageInfo struct {
 	HasNextPage     bool    `json:"hasNextPage"`
 	HasPreviousPage bool    `json:"hasPreviousPage"`
 	StartCursor     *string `json:"startCursor"`
+}
+
+type RemoveEdgeInput struct {
+	Parent string `json:"parent"`
+	Child  string `json:"child"`
+}
+
+type RemoveEdgeOutput struct {
+	Removed bool `json:"removed"`
+}
+
+type RemoveNodeInput struct {
+	ID string `json:"id"`
+}
+
+type RemoveNodeOutput struct {
+	Removed bool `json:"removed"`
+}
+
+type SaveEdgeInput struct {
+	Parent   string         `json:"parent"`
+	Child    string         `json:"child"`
+	Location *LocationInput `json:"location"`
+}
+
+type SaveEdgeOutput struct {
+	Parent string `json:"parent"`
+	Child  string `json:"child"`
+}
+
+type SaveNodeInput struct {
+	ID       string   `json:"id"`
+	Parents  []string `json:"parents"`
+	Children []string `json:"children"`
+}
+
+type SaveNodeOutput struct {
+	ID string `json:"id"`
+}
+
+type SetEdgeFieldsInput struct {
+	Parent   string         `json:"parent"`
+	Child    string         `json:"child"`
+	Location *LocationInput `json:"location"`
+}
+
+type SetEdgeFieldsOutput struct {
+	Set bool `json:"set"`
+}
+
+type SetNodeFieldsInput struct {
+	ID       string         `json:"id"`
+	Location *LocationInput `json:"location"`
+}
+
+type SetNodeFieldsOutput struct {
+	Set bool `json:"set"`
 }

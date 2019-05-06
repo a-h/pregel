@@ -37,25 +37,90 @@ type PregelMutationResolver struct {
 	Store *pregel.Store
 }
 
-// CreateNode creates Nodes.
-func (pr *PregelMutationResolver) CreateNode(ctx context.Context, node NewNode) (id string, err error) {
-	n := pregel.NewNode(node.ID)
+// SaveNode saves Nodes.
+func (pr *PregelMutationResolver) SaveNode(ctx context.Context, input SaveNodeInput) (output *SaveNodeOutput, err error) {
+	n := pregel.NewNode(input.ID)
 	err = pr.Store.Put(n)
 	if err != nil {
 		return
 	}
-	id = node.ID
+	output = &SaveNodeOutput{
+		ID: input.ID,
+	}
 	return
 }
 
-// CreateEdge creates edges.
-func (pr *PregelMutationResolver) CreateEdge(ctx context.Context, edge NewEdge) (id string, err error) {
-	//TODO: Copy edge data to pregel edge.
-	err = pr.Store.PutEdges(edge.Parent, pregel.NewEdge(edge.Child))
+// SaveEdge saves edges.
+func (pr *PregelMutationResolver) SaveEdge(ctx context.Context, input SaveEdgeInput) (output *SaveEdgeOutput, err error) {
+	// Copy GraphQL edge data to pregel edge.
+	e := pregel.NewEdge(input.Child)
+	if input.Location != nil {
+		e = e.WithData(input.Location)
+	}
+	err = pr.Store.PutEdges(input.Parent, e)
 	if err != nil {
 		return
 	}
-	id = edge.Parent
+	output = &SaveEdgeOutput{
+		Parent: input.Parent,
+		Child:  input.Child,
+	}
+	return
+}
+
+// RemoveNode from the database.
+func (pr *PregelMutationResolver) RemoveNode(ctx context.Context, input RemoveNodeInput) (output *RemoveNodeOutput, err error) {
+	err = pr.Store.Delete(input.ID)
+	output = &RemoveNodeOutput{}
+	if err == nil {
+		output.Removed = true
+	}
+	return
+}
+
+// RemoveEdge from the database.
+func (pr *PregelMutationResolver) RemoveEdge(ctx context.Context, input RemoveEdgeInput) (output *RemoveEdgeOutput, err error) {
+	err = pr.Store.DeleteEdge(input.Parent, input.Child)
+	output = &RemoveEdgeOutput{}
+	if err == nil {
+		output.Removed = true
+	}
+	return
+}
+
+// SetNodeFields sets data on a node.
+func (pr *PregelMutationResolver) SetNodeFields(ctx context.Context, input SetNodeFieldsInput) (output *SetNodeFieldsOutput, err error) {
+	output = &SetNodeFieldsOutput{}
+	if input.Location == nil {
+		return
+	}
+	// Convert the input into the standard type.
+	location := Location{
+		Lat: input.Location.Lat,
+		Lng: input.Location.Lng,
+	}
+	err = pr.Store.PutNodeData(input.ID, pregel.NewData(location))
+	if err == nil {
+		output.Set = true
+	}
+	return
+}
+
+// SetEdgeFields sets data against edges.
+func (pr *PregelMutationResolver) SetEdgeFields(ctx context.Context, input SetEdgeFieldsInput) (output *SetEdgeFieldsOutput, err error) {
+	output = &SetEdgeFieldsOutput{}
+	if input.Location == nil {
+		return
+	}
+	// Convert the input into the standard type.
+	location := Location{
+		Lat: input.Location.Lat,
+		Lng: input.Location.Lng,
+	}
+	err = pr.Store.PutEdgeData(input.Parent, input.Child, pregel.NewData(location))
+	if err == nil {
+		output.Set = true
+	}
 	return
 }
 
@@ -72,7 +137,18 @@ func (r *PregelNodeResolver) Children(ctx context.Context, obj *pregel.Node, fir
 	return createConnectionFrom(ctx, obj.Children, first, after)
 }
 
-func filterEdges(edges []pregel.Edge, first int, after *string) (filtered []pregel.Edge, pi PageInfo) {
+// Data converts the underlying pregel.Node's data into the GraphQL data.
+func (r *PregelNodeResolver) Data(ctx context.Context, obj *pregel.Node) (items []NodeDataItem, err error) {
+	// Convert the data into NodeDataItem values.
+	for _, v := range obj.Data {
+		if itm, ok := v.(NodeDataItem); ok {
+			items = append(items, itm)
+		}
+	}
+	return
+}
+
+func filterEdges(edges []*pregel.Edge, first int, after *string) (filtered []*pregel.Edge, pi PageInfo) {
 	start, end := 0, len(edges)
 	if after != nil {
 		afterID, err := gqlid.Decode(*after)
@@ -107,7 +183,7 @@ func filterEdges(edges []pregel.Edge, first int, after *string) (filtered []preg
 	return
 }
 
-func createConnectionFrom(ctx context.Context, edges []pregel.Edge, first int, after *string) (c *Connection, err error) {
+func createConnectionFrom(ctx context.Context, edges []*pregel.Edge, first int, after *string) (c *Connection, err error) {
 	if len(edges) == 0 {
 		return
 	}
@@ -128,10 +204,13 @@ func createConnectionFrom(ctx context.Context, edges []pregel.Edge, first int, a
 		return
 	}
 	for _, n := range nodes {
+		if n == nil {
+			//TODO: Log the fact that we received an unexpected null record for one of the keys.
+			continue
+		}
 		ee := Edge{
 			Cursor: gqlid.Encode(n.ID),
-			// Data: child.Data, // TODO: Add data to the edge.
-			Node: n,
+			Node:   n,
 		}
 		c.Edges = append(c.Edges, ee)
 	}

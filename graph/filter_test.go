@@ -9,7 +9,7 @@ import (
 )
 
 func TestFilterEdges(t *testing.T) {
-	edges := []pregel.Edge{
+	edges := []*pregel.Edge{
 		pregel.NewEdge("a"),
 		pregel.NewEdge("b"),
 		pregel.NewEdge("c"),
@@ -20,7 +20,7 @@ func TestFilterEdges(t *testing.T) {
 
 	tests := []struct {
 		name                    string
-		edges                   []pregel.Edge
+		edges                   []*pregel.Edge
 		first                   int
 		after                   string
 		expectedIDs             []string

@@ -251,8 +251,8 @@ func (s *Store) PutEdges(parent string, edges ...*Edge) (err error) {
 	return
 }
 
-// PutChildEdgeData into the store.
-func (s *Store) PutChildEdgeData(parent, child string, data Data) (err error) {
+// PutEdgeData into the store.
+func (s *Store) PutEdgeData(parent, child string, data Data) (err error) {
 	//TODO: What happens if there isn't a node with that ID, or a matching Edge?
 	var wrs []*dynamodb.WriteRequest
 	for k, v := range data {

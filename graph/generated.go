@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"sync"
 
@@ -51,16 +52,27 @@ type ComplexityRoot struct {
 
 	Edge struct {
 		Cursor func(childComplexity int) int
+		Data   func(childComplexity int) int
 		Node   func(childComplexity int) int
 	}
 
+	Location struct {
+		Lat func(childComplexity int) int
+		Lng func(childComplexity int) int
+	}
+
 	Mutation struct {
-		CreateEdge func(childComplexity int, edge NewEdge) int
-		CreateNode func(childComplexity int, node NewNode) int
+		RemoveEdge    func(childComplexity int, input RemoveEdgeInput) int
+		RemoveNode    func(childComplexity int, input RemoveNodeInput) int
+		SaveEdge      func(childComplexity int, edge SaveEdgeInput) int
+		SaveNode      func(childComplexity int, node SaveNodeInput) int
+		SetEdgeFields func(childComplexity int, input SetEdgeFieldsInput) int
+		SetNodeFields func(childComplexity int, input SetNodeFieldsInput) int
 	}
 
 	Node struct {
 		Children func(childComplexity int, first int, after *string) int
+		Data     func(childComplexity int) int
 		ID       func(childComplexity int) int
 		Parents  func(childComplexity int, first int, after *string) int
 	}
@@ -75,15 +87,45 @@ type ComplexityRoot struct {
 	Query struct {
 		Get func(childComplexity int, id string) int
 	}
+
+	RemoveEdgeOutput struct {
+		Removed func(childComplexity int) int
+	}
+
+	RemoveNodeOutput struct {
+		Removed func(childComplexity int) int
+	}
+
+	SaveEdgeOutput struct {
+		Child  func(childComplexity int) int
+		Parent func(childComplexity int) int
+	}
+
+	SaveNodeOutput struct {
+		ID func(childComplexity int) int
+	}
+
+	SetEdgeFieldsOutput struct {
+		Set func(childComplexity int) int
+	}
+
+	SetNodeFieldsOutput struct {
+		Set func(childComplexity int) int
+	}
 }
 
 type MutationResolver interface {
-	CreateNode(ctx context.Context, node NewNode) (string, error)
-	CreateEdge(ctx context.Context, edge NewEdge) (string, error)
+	SaveNode(ctx context.Context, node SaveNodeInput) (*SaveNodeOutput, error)
+	SaveEdge(ctx context.Context, edge SaveEdgeInput) (*SaveEdgeOutput, error)
+	RemoveNode(ctx context.Context, input RemoveNodeInput) (*RemoveNodeOutput, error)
+	RemoveEdge(ctx context.Context, input RemoveEdgeInput) (*RemoveEdgeOutput, error)
+	SetNodeFields(ctx context.Context, input SetNodeFieldsInput) (*SetNodeFieldsOutput, error)
+	SetEdgeFields(ctx context.Context, input SetEdgeFieldsInput) (*SetEdgeFieldsOutput, error)
 }
 type NodeResolver interface {
 	Parents(ctx context.Context, obj *pregel.Node, first int, after *string) (*Connection, error)
 	Children(ctx context.Context, obj *pregel.Node, first int, after *string) (*Connection, error)
+	Data(ctx context.Context, obj *pregel.Node) ([]NodeDataItem, error)
 }
 type QueryResolver interface {
 	Get(ctx context.Context, id string) (*pregel.Node, error)
@@ -132,6 +174,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Edge.Cursor(childComplexity), true
 
+	case "Edge.Data":
+		if e.complexity.Edge.Data == nil {
+			break
+		}
+
+		return e.complexity.Edge.Data(childComplexity), true
+
 	case "Edge.Node":
 		if e.complexity.Edge.Node == nil {
 			break
@@ -139,29 +188,91 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Edge.Node(childComplexity), true
 
-	case "Mutation.CreateEdge":
-		if e.complexity.Mutation.CreateEdge == nil {
+	case "Location.Lat":
+		if e.complexity.Location.Lat == nil {
 			break
 		}
 
-		args, err := ec.field_Mutation_createEdge_args(context.TODO(), rawArgs)
+		return e.complexity.Location.Lat(childComplexity), true
+
+	case "Location.Lng":
+		if e.complexity.Location.Lng == nil {
+			break
+		}
+
+		return e.complexity.Location.Lng(childComplexity), true
+
+	case "Mutation.RemoveEdge":
+		if e.complexity.Mutation.RemoveEdge == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_removeEdge_args(context.TODO(), rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.complexity.Mutation.CreateEdge(childComplexity, args["edge"].(NewEdge)), true
+		return e.complexity.Mutation.RemoveEdge(childComplexity, args["input"].(RemoveEdgeInput)), true
 
-	case "Mutation.CreateNode":
-		if e.complexity.Mutation.CreateNode == nil {
+	case "Mutation.RemoveNode":
+		if e.complexity.Mutation.RemoveNode == nil {
 			break
 		}
 
-		args, err := ec.field_Mutation_createNode_args(context.TODO(), rawArgs)
+		args, err := ec.field_Mutation_removeNode_args(context.TODO(), rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.complexity.Mutation.CreateNode(childComplexity, args["node"].(NewNode)), true
+		return e.complexity.Mutation.RemoveNode(childComplexity, args["input"].(RemoveNodeInput)), true
+
+	case "Mutation.SaveEdge":
+		if e.complexity.Mutation.SaveEdge == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_saveEdge_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.SaveEdge(childComplexity, args["edge"].(SaveEdgeInput)), true
+
+	case "Mutation.SaveNode":
+		if e.complexity.Mutation.SaveNode == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_saveNode_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.SaveNode(childComplexity, args["node"].(SaveNodeInput)), true
+
+	case "Mutation.SetEdgeFields":
+		if e.complexity.Mutation.SetEdgeFields == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setEdgeFields_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.SetEdgeFields(childComplexity, args["input"].(SetEdgeFieldsInput)), true
+
+	case "Mutation.SetNodeFields":
+		if e.complexity.Mutation.SetNodeFields == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_setNodeFields_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.SetNodeFields(childComplexity, args["input"].(SetNodeFieldsInput)), true
 
 	case "Node.Children":
 		if e.complexity.Node.Children == nil {
@@ -174,6 +285,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Node.Children(childComplexity, args["first"].(int), args["after"].(*string)), true
+
+	case "Node.Data":
+		if e.complexity.Node.Data == nil {
+			break
+		}
+
+		return e.complexity.Node.Data(childComplexity), true
 
 	case "Node.ID":
 		if e.complexity.Node.ID == nil {
@@ -233,6 +351,55 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Query.Get(childComplexity, args["id"].(string)), true
+
+	case "RemoveEdgeOutput.Removed":
+		if e.complexity.RemoveEdgeOutput.Removed == nil {
+			break
+		}
+
+		return e.complexity.RemoveEdgeOutput.Removed(childComplexity), true
+
+	case "RemoveNodeOutput.Removed":
+		if e.complexity.RemoveNodeOutput.Removed == nil {
+			break
+		}
+
+		return e.complexity.RemoveNodeOutput.Removed(childComplexity), true
+
+	case "SaveEdgeOutput.Child":
+		if e.complexity.SaveEdgeOutput.Child == nil {
+			break
+		}
+
+		return e.complexity.SaveEdgeOutput.Child(childComplexity), true
+
+	case "SaveEdgeOutput.Parent":
+		if e.complexity.SaveEdgeOutput.Parent == nil {
+			break
+		}
+
+		return e.complexity.SaveEdgeOutput.Parent(childComplexity), true
+
+	case "SaveNodeOutput.ID":
+		if e.complexity.SaveNodeOutput.ID == nil {
+			break
+		}
+
+		return e.complexity.SaveNodeOutput.ID(childComplexity), true
+
+	case "SetEdgeFieldsOutput.Set":
+		if e.complexity.SetEdgeFieldsOutput.Set == nil {
+			break
+		}
+
+		return e.complexity.SetEdgeFieldsOutput.Set(childComplexity), true
+
+	case "SetNodeFieldsOutput.Set":
+		if e.complexity.SetNodeFieldsOutput.Set == nil {
+			break
+		}
+
+		return e.complexity.SetNodeFieldsOutput.Set(childComplexity), true
 
 	}
 	return 0, false
@@ -319,10 +486,18 @@ type PageInfo {
   startCursor: String
 }
 
+type Location {
+  lng: Float!
+  lat: Float!
+}
+
+union NodeDataItem = Location
+
 type Node {
   id: ID!
   parents(first: Int!, after: String): Connection
   children(first: Int!, after: String): Connection
+  data: [NodeDataItem]!
 }
 
 type Connection {
@@ -331,9 +506,12 @@ type Connection {
   totalCount: Int!
 }
 
+union EdgeDataItem = Location
+
 type Edge {
   cursor: String!
   node: Node
+  data: [EdgeDataItem]!
 }
 
 # Define queries and mutations.
@@ -341,33 +519,118 @@ type Query {
   get(id: ID!): Node
 }
 
-input NewNode {
+input SaveNodeInput {
   id: ID!
   parents: [ID!]
   children: [ID!]
 }
 
-input NewEdge {
+input LocationInput {
+  lng: Float!
+  lat: Float!
+}
+
+type SaveNodeOutput {
+  id: ID!
+}
+
+input SaveEdgeInput {
+  parent: ID! 
+  child: ID!
+
+  location: LocationInput
+}
+
+type SaveEdgeOutput {
   parent: ID! 
   child: ID!
 }
 
+input RemoveNodeInput {
+  id: ID!
+}
+
+type RemoveNodeOutput {
+  removed: Boolean!
+}
+
+input RemoveEdgeInput {
+  parent: ID! 
+  child: ID!
+}
+
+type RemoveEdgeOutput {
+  removed: Boolean!
+}
+
+input SetNodeFieldsInput {
+  id: ID!
+  location: LocationInput
+}
+
+type SetNodeFieldsOutput {
+  set: Boolean!
+}
+
+input SetEdgeFieldsInput {
+  parent: ID!
+  child: ID!
+  location: LocationInput
+}
+
+type SetEdgeFieldsOutput {
+  set: Boolean!
+}
+
 type Mutation {
-  createNode(node: NewNode!): ID!
-  createEdge(edge: NewEdge!): ID!
-}`},
+  saveNode(node: SaveNodeInput!): SaveNodeOutput!
+  saveEdge(edge: SaveEdgeInput!): SaveEdgeOutput!
+  removeNode(input: RemoveNodeInput!): RemoveNodeOutput!
+  removeEdge(input: RemoveEdgeInput!): RemoveEdgeOutput!
+  setNodeFields(input: SetNodeFieldsInput!): SetNodeFieldsOutput!
+  setEdgeFields(input: SetEdgeFieldsInput!): SetEdgeFieldsOutput!
+}
+`},
 )
 
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
 
-func (ec *executionContext) field_Mutation_createEdge_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Mutation_removeEdge_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 NewEdge
+	var arg0 RemoveEdgeInput
+	if tmp, ok := rawArgs["input"]; ok {
+		arg0, err = ec.unmarshalNRemoveEdgeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveEdgeInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_removeNode_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 RemoveNodeInput
+	if tmp, ok := rawArgs["input"]; ok {
+		arg0, err = ec.unmarshalNRemoveNodeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveNodeInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_saveEdge_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 SaveEdgeInput
 	if tmp, ok := rawArgs["edge"]; ok {
-		arg0, err = ec.unmarshalNNewEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNewEdge(ctx, tmp)
+		arg0, err = ec.unmarshalNSaveEdgeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveEdgeInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
@@ -376,17 +639,45 @@ func (ec *executionContext) field_Mutation_createEdge_args(ctx context.Context, 
 	return args, nil
 }
 
-func (ec *executionContext) field_Mutation_createNode_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Mutation_saveNode_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	var arg0 NewNode
+	var arg0 SaveNodeInput
 	if tmp, ok := rawArgs["node"]; ok {
-		arg0, err = ec.unmarshalNNewNode2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNewNode(ctx, tmp)
+		arg0, err = ec.unmarshalNSaveNodeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveNodeInput(ctx, tmp)
 		if err != nil {
 			return nil, err
 		}
 	}
 	args["node"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setEdgeFields_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 SetEdgeFieldsInput
+	if tmp, ok := rawArgs["input"]; ok {
+		arg0, err = ec.unmarshalNSetEdgeFieldsInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetEdgeFieldsInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_setNodeFields_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 SetNodeFieldsInput
+	if tmp, ok := rawArgs["input"]; ok {
+		arg0, err = ec.unmarshalNSetNodeFieldsInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetNodeFieldsInput(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -623,27 +914,20 @@ func (ec *executionContext) _Edge_node(ctx context.Context, field graphql.Collec
 	return ec.marshalONode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚐNode(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Mutation_createNode(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+func (ec *executionContext) _Edge_data(ctx context.Context, field graphql.CollectedField, obj *Edge) graphql.Marshaler {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
 	rctx := &graphql.ResolverContext{
-		Object:   "Mutation",
+		Object:   "Edge",
 		Field:    field,
 		Args:     nil,
-		IsMethod: true,
+		IsMethod: false,
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
-	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Mutation_createNode_args(ctx, rawArgs)
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	rctx.Args = args
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
-	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().CreateNode(rctx, args["node"].(NewNode))
+		return obj.Data, nil
 	})
 	if resTmp == nil {
 		if !ec.HasError(rctx) {
@@ -651,13 +935,67 @@ func (ec *executionContext) _Mutation_createNode(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(string)
+	res := resTmp.([]EdgeDataItem)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNID2string(ctx, field.Selections, res)
+	return ec.marshalNEdgeDataItem2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdgeDataItem(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) _Mutation_createEdge(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+func (ec *executionContext) _Location_lng(ctx context.Context, field graphql.CollectedField, obj *Location) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Location",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Lng, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(float64)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNFloat2float64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Location_lat(ctx context.Context, field graphql.CollectedField, obj *Location) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Location",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Lat, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(float64)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNFloat2float64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_saveNode(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
 	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
 	rctx := &graphql.ResolverContext{
@@ -668,7 +1006,7 @@ func (ec *executionContext) _Mutation_createEdge(ctx context.Context, field grap
 	}
 	ctx = graphql.WithResolverContext(ctx, rctx)
 	rawArgs := field.ArgumentMap(ec.Variables)
-	args, err := ec.field_Mutation_createEdge_args(ctx, rawArgs)
+	args, err := ec.field_Mutation_saveNode_args(ctx, rawArgs)
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
@@ -677,7 +1015,7 @@ func (ec *executionContext) _Mutation_createEdge(ctx context.Context, field grap
 	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
 	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().CreateEdge(rctx, args["edge"].(NewEdge))
+		return ec.resolvers.Mutation().SaveNode(rctx, args["node"].(SaveNodeInput))
 	})
 	if resTmp == nil {
 		if !ec.HasError(rctx) {
@@ -685,10 +1023,180 @@ func (ec *executionContext) _Mutation_createEdge(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(string)
+	res := resTmp.(*SaveNodeOutput)
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
-	return ec.marshalNID2string(ctx, field.Selections, res)
+	return ec.marshalNSaveNodeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveNodeOutput(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_saveEdge(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_saveEdge_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().SaveEdge(rctx, args["edge"].(SaveEdgeInput))
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*SaveEdgeOutput)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNSaveEdgeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveEdgeOutput(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_removeNode(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_removeNode_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().RemoveNode(rctx, args["input"].(RemoveNodeInput))
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*RemoveNodeOutput)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNRemoveNodeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveNodeOutput(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_removeEdge(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_removeEdge_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().RemoveEdge(rctx, args["input"].(RemoveEdgeInput))
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*RemoveEdgeOutput)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNRemoveEdgeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveEdgeOutput(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_setNodeFields(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_setNodeFields_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().SetNodeFields(rctx, args["input"].(SetNodeFieldsInput))
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*SetNodeFieldsOutput)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNSetNodeFieldsOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetNodeFieldsOutput(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_setEdgeFields(ctx context.Context, field graphql.CollectedField) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Mutation",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_setEdgeFields_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	rctx.Args = args
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, nil, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().SetEdgeFields(rctx, args["input"].(SetEdgeFieldsInput))
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*SetEdgeFieldsOutput)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNSetEdgeFieldsOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetEdgeFieldsOutput(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Node_id(ctx context.Context, field graphql.CollectedField, obj *pregel.Node) graphql.Marshaler {
@@ -778,6 +1286,33 @@ func (ec *executionContext) _Node_children(ctx context.Context, field graphql.Co
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalOConnection2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐConnection(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Node_data(ctx context.Context, field graphql.CollectedField, obj *pregel.Node) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Node",
+		Field:    field,
+		Args:     nil,
+		IsMethod: true,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Node().Data(rctx, obj)
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]NodeDataItem)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNNodeDataItem2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNodeDataItem(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _PageInfo_endCursor(ctx context.Context, field graphql.CollectedField, obj *PageInfo) graphql.Marshaler {
@@ -966,6 +1501,195 @@ func (ec *executionContext) _Query___schema(ctx context.Context, field graphql.C
 	rctx.Result = res
 	ctx = ec.Tracer.StartFieldChildExecution(ctx)
 	return ec.marshalO__Schema2ᚖgithubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐSchema(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _RemoveEdgeOutput_removed(ctx context.Context, field graphql.CollectedField, obj *RemoveEdgeOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "RemoveEdgeOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Removed, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _RemoveNodeOutput_removed(ctx context.Context, field graphql.CollectedField, obj *RemoveNodeOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "RemoveNodeOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Removed, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _SaveEdgeOutput_parent(ctx context.Context, field graphql.CollectedField, obj *SaveEdgeOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "SaveEdgeOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Parent, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _SaveEdgeOutput_child(ctx context.Context, field graphql.CollectedField, obj *SaveEdgeOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "SaveEdgeOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Child, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _SaveNodeOutput_id(ctx context.Context, field graphql.CollectedField, obj *SaveNodeOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "SaveNodeOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ID, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _SetEdgeFieldsOutput_set(ctx context.Context, field graphql.CollectedField, obj *SetEdgeFieldsOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "SetEdgeFieldsOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Set, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _SetNodeFieldsOutput_set(ctx context.Context, field graphql.CollectedField, obj *SetNodeFieldsOutput) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "SetNodeFieldsOutput",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Set, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) ___Directive_name(ctx context.Context, field graphql.CollectedField, obj *introspection.Directive) graphql.Marshaler {
@@ -1799,8 +2523,32 @@ func (ec *executionContext) ___Type_ofType(ctx context.Context, field graphql.Co
 
 // region    **************************** input.gotpl *****************************
 
-func (ec *executionContext) unmarshalInputNewEdge(ctx context.Context, v interface{}) (NewEdge, error) {
-	var it NewEdge
+func (ec *executionContext) unmarshalInputLocationInput(ctx context.Context, v interface{}) (LocationInput, error) {
+	var it LocationInput
+	var asMap = v.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "lng":
+			var err error
+			it.Lng, err = ec.unmarshalNFloat2float64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "lat":
+			var err error
+			it.Lat, err = ec.unmarshalNFloat2float64(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputRemoveEdgeInput(ctx context.Context, v interface{}) (RemoveEdgeInput, error) {
+	var it RemoveEdgeInput
 	var asMap = v.(map[string]interface{})
 
 	for k, v := range asMap {
@@ -1823,8 +2571,56 @@ func (ec *executionContext) unmarshalInputNewEdge(ctx context.Context, v interfa
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputNewNode(ctx context.Context, v interface{}) (NewNode, error) {
-	var it NewNode
+func (ec *executionContext) unmarshalInputRemoveNodeInput(ctx context.Context, v interface{}) (RemoveNodeInput, error) {
+	var it RemoveNodeInput
+	var asMap = v.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "id":
+			var err error
+			it.ID, err = ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputSaveEdgeInput(ctx context.Context, v interface{}) (SaveEdgeInput, error) {
+	var it SaveEdgeInput
+	var asMap = v.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "parent":
+			var err error
+			it.Parent, err = ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "child":
+			var err error
+			it.Child, err = ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "location":
+			var err error
+			it.Location, err = ec.unmarshalOLocationInput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputSaveNodeInput(ctx context.Context, v interface{}) (SaveNodeInput, error) {
+	var it SaveNodeInput
 	var asMap = v.(map[string]interface{})
 
 	for k, v := range asMap {
@@ -1853,9 +2649,89 @@ func (ec *executionContext) unmarshalInputNewNode(ctx context.Context, v interfa
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputSetEdgeFieldsInput(ctx context.Context, v interface{}) (SetEdgeFieldsInput, error) {
+	var it SetEdgeFieldsInput
+	var asMap = v.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "parent":
+			var err error
+			it.Parent, err = ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "child":
+			var err error
+			it.Child, err = ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "location":
+			var err error
+			it.Location, err = ec.unmarshalOLocationInput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputSetNodeFieldsInput(ctx context.Context, v interface{}) (SetNodeFieldsInput, error) {
+	var it SetNodeFieldsInput
+	var asMap = v.(map[string]interface{})
+
+	for k, v := range asMap {
+		switch k {
+		case "id":
+			var err error
+			it.ID, err = ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "location":
+			var err error
+			it.Location, err = ec.unmarshalOLocationInput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
+
+func (ec *executionContext) _EdgeDataItem(ctx context.Context, sel ast.SelectionSet, obj *EdgeDataItem) graphql.Marshaler {
+	switch obj := (*obj).(type) {
+	case nil:
+		return graphql.Null
+	case Location:
+		return ec._Location(ctx, sel, &obj)
+	case *Location:
+		return ec._Location(ctx, sel, obj)
+	default:
+		panic(fmt.Errorf("unexpected type %T", obj))
+	}
+}
+
+func (ec *executionContext) _NodeDataItem(ctx context.Context, sel ast.SelectionSet, obj *NodeDataItem) graphql.Marshaler {
+	switch obj := (*obj).(type) {
+	case nil:
+		return graphql.Null
+	case Location:
+		return ec._Location(ctx, sel, &obj)
+	case *Location:
+		return ec._Location(ctx, sel, obj)
+	default:
+		panic(fmt.Errorf("unexpected type %T", obj))
+	}
+}
 
 // endregion ************************** interface.gotpl ***************************
 
@@ -1913,6 +2789,43 @@ func (ec *executionContext) _Edge(ctx context.Context, sel ast.SelectionSet, obj
 			}
 		case "node":
 			out.Values[i] = ec._Edge_node(ctx, field, obj)
+		case "data":
+			out.Values[i] = ec._Edge_data(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var locationImplementors = []string{"Location", "NodeDataItem", "EdgeDataItem"}
+
+func (ec *executionContext) _Location(ctx context.Context, sel ast.SelectionSet, obj *Location) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, locationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Location")
+		case "lng":
+			out.Values[i] = ec._Location_lng(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "lat":
+			out.Values[i] = ec._Location_lat(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -1939,13 +2852,33 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
-		case "createNode":
-			out.Values[i] = ec._Mutation_createNode(ctx, field)
+		case "saveNode":
+			out.Values[i] = ec._Mutation_saveNode(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalid = true
 			}
-		case "createEdge":
-			out.Values[i] = ec._Mutation_createEdge(ctx, field)
+		case "saveEdge":
+			out.Values[i] = ec._Mutation_saveEdge(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "removeNode":
+			out.Values[i] = ec._Mutation_removeNode(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "removeEdge":
+			out.Values[i] = ec._Mutation_removeEdge(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "setNodeFields":
+			out.Values[i] = ec._Mutation_setNodeFields(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "setEdgeFields":
+			out.Values[i] = ec._Mutation_setEdgeFields(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalid = true
 			}
@@ -1996,6 +2929,20 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 					}
 				}()
 				res = ec._Node_children(ctx, field, obj)
+				return res
+			})
+		case "data":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Node_data(ctx, field, obj)
+				if res == graphql.Null {
+					invalid = true
+				}
 				return res
 			})
 		default:
@@ -2075,6 +3022,173 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec._Query___type(ctx, field)
 		case "__schema":
 			out.Values[i] = ec._Query___schema(ctx, field)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var removeEdgeOutputImplementors = []string{"RemoveEdgeOutput"}
+
+func (ec *executionContext) _RemoveEdgeOutput(ctx context.Context, sel ast.SelectionSet, obj *RemoveEdgeOutput) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, removeEdgeOutputImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RemoveEdgeOutput")
+		case "removed":
+			out.Values[i] = ec._RemoveEdgeOutput_removed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var removeNodeOutputImplementors = []string{"RemoveNodeOutput"}
+
+func (ec *executionContext) _RemoveNodeOutput(ctx context.Context, sel ast.SelectionSet, obj *RemoveNodeOutput) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, removeNodeOutputImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RemoveNodeOutput")
+		case "removed":
+			out.Values[i] = ec._RemoveNodeOutput_removed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var saveEdgeOutputImplementors = []string{"SaveEdgeOutput"}
+
+func (ec *executionContext) _SaveEdgeOutput(ctx context.Context, sel ast.SelectionSet, obj *SaveEdgeOutput) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, saveEdgeOutputImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SaveEdgeOutput")
+		case "parent":
+			out.Values[i] = ec._SaveEdgeOutput_parent(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "child":
+			out.Values[i] = ec._SaveEdgeOutput_child(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var saveNodeOutputImplementors = []string{"SaveNodeOutput"}
+
+func (ec *executionContext) _SaveNodeOutput(ctx context.Context, sel ast.SelectionSet, obj *SaveNodeOutput) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, saveNodeOutputImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SaveNodeOutput")
+		case "id":
+			out.Values[i] = ec._SaveNodeOutput_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var setEdgeFieldsOutputImplementors = []string{"SetEdgeFieldsOutput"}
+
+func (ec *executionContext) _SetEdgeFieldsOutput(ctx context.Context, sel ast.SelectionSet, obj *SetEdgeFieldsOutput) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, setEdgeFieldsOutputImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetEdgeFieldsOutput")
+		case "set":
+			out.Values[i] = ec._SetEdgeFieldsOutput_set(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
+
+var setNodeFieldsOutputImplementors = []string{"SetNodeFieldsOutput"}
+
+func (ec *executionContext) _SetNodeFieldsOutput(ctx context.Context, sel ast.SelectionSet, obj *SetNodeFieldsOutput) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, setNodeFieldsOutputImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SetNodeFieldsOutput")
+		case "set":
+			out.Values[i] = ec._SetNodeFieldsOutput_set(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2343,6 +3457,51 @@ func (ec *executionContext) marshalNEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraph�
 	return ec._Edge(ctx, sel, &v)
 }
 
+func (ec *executionContext) marshalNEdgeDataItem2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdgeDataItem(ctx context.Context, sel ast.SelectionSet, v []EdgeDataItem) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		rctx := &graphql.ResolverContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithResolverContext(ctx, rctx)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOEdgeDataItem2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdgeDataItem(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+	return ret
+}
+
+func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v interface{}) (float64, error) {
+	return graphql.UnmarshalFloat(v)
+}
+
+func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.SelectionSet, v float64) graphql.Marshaler {
+	return graphql.MarshalFloat(v)
+}
+
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v interface{}) (string, error) {
 	return graphql.UnmarshalID(v)
 }
@@ -2359,16 +3518,153 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return graphql.MarshalInt(v)
 }
 
-func (ec *executionContext) unmarshalNNewEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNewEdge(ctx context.Context, v interface{}) (NewEdge, error) {
-	return ec.unmarshalInputNewEdge(ctx, v)
-}
+func (ec *executionContext) marshalNNodeDataItem2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNodeDataItem(ctx context.Context, sel ast.SelectionSet, v []NodeDataItem) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		rctx := &graphql.ResolverContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithResolverContext(ctx, rctx)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalONodeDataItem2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNodeDataItem(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
 
-func (ec *executionContext) unmarshalNNewNode2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNewNode(ctx context.Context, v interface{}) (NewNode, error) {
-	return ec.unmarshalInputNewNode(ctx, v)
+	}
+	wg.Wait()
+	return ret
 }
 
 func (ec *executionContext) marshalNPageInfo2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐPageInfo(ctx context.Context, sel ast.SelectionSet, v PageInfo) graphql.Marshaler {
 	return ec._PageInfo(ctx, sel, &v)
+}
+
+func (ec *executionContext) unmarshalNRemoveEdgeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveEdgeInput(ctx context.Context, v interface{}) (RemoveEdgeInput, error) {
+	return ec.unmarshalInputRemoveEdgeInput(ctx, v)
+}
+
+func (ec *executionContext) marshalNRemoveEdgeOutput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveEdgeOutput(ctx context.Context, sel ast.SelectionSet, v RemoveEdgeOutput) graphql.Marshaler {
+	return ec._RemoveEdgeOutput(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNRemoveEdgeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveEdgeOutput(ctx context.Context, sel ast.SelectionSet, v *RemoveEdgeOutput) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._RemoveEdgeOutput(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNRemoveNodeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveNodeInput(ctx context.Context, v interface{}) (RemoveNodeInput, error) {
+	return ec.unmarshalInputRemoveNodeInput(ctx, v)
+}
+
+func (ec *executionContext) marshalNRemoveNodeOutput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveNodeOutput(ctx context.Context, sel ast.SelectionSet, v RemoveNodeOutput) graphql.Marshaler {
+	return ec._RemoveNodeOutput(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNRemoveNodeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐRemoveNodeOutput(ctx context.Context, sel ast.SelectionSet, v *RemoveNodeOutput) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._RemoveNodeOutput(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSaveEdgeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveEdgeInput(ctx context.Context, v interface{}) (SaveEdgeInput, error) {
+	return ec.unmarshalInputSaveEdgeInput(ctx, v)
+}
+
+func (ec *executionContext) marshalNSaveEdgeOutput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveEdgeOutput(ctx context.Context, sel ast.SelectionSet, v SaveEdgeOutput) graphql.Marshaler {
+	return ec._SaveEdgeOutput(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNSaveEdgeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveEdgeOutput(ctx context.Context, sel ast.SelectionSet, v *SaveEdgeOutput) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._SaveEdgeOutput(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSaveNodeInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveNodeInput(ctx context.Context, v interface{}) (SaveNodeInput, error) {
+	return ec.unmarshalInputSaveNodeInput(ctx, v)
+}
+
+func (ec *executionContext) marshalNSaveNodeOutput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveNodeOutput(ctx context.Context, sel ast.SelectionSet, v SaveNodeOutput) graphql.Marshaler {
+	return ec._SaveNodeOutput(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNSaveNodeOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSaveNodeOutput(ctx context.Context, sel ast.SelectionSet, v *SaveNodeOutput) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._SaveNodeOutput(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSetEdgeFieldsInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetEdgeFieldsInput(ctx context.Context, v interface{}) (SetEdgeFieldsInput, error) {
+	return ec.unmarshalInputSetEdgeFieldsInput(ctx, v)
+}
+
+func (ec *executionContext) marshalNSetEdgeFieldsOutput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetEdgeFieldsOutput(ctx context.Context, sel ast.SelectionSet, v SetEdgeFieldsOutput) graphql.Marshaler {
+	return ec._SetEdgeFieldsOutput(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNSetEdgeFieldsOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetEdgeFieldsOutput(ctx context.Context, sel ast.SelectionSet, v *SetEdgeFieldsOutput) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._SetEdgeFieldsOutput(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSetNodeFieldsInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetNodeFieldsInput(ctx context.Context, v interface{}) (SetNodeFieldsInput, error) {
+	return ec.unmarshalInputSetNodeFieldsInput(ctx, v)
+}
+
+func (ec *executionContext) marshalNSetNodeFieldsOutput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetNodeFieldsOutput(ctx context.Context, sel ast.SelectionSet, v SetNodeFieldsOutput) graphql.Marshaler {
+	return ec._SetNodeFieldsOutput(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNSetNodeFieldsOutput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐSetNodeFieldsOutput(ctx context.Context, sel ast.SelectionSet, v *SetNodeFieldsOutput) graphql.Marshaler {
+	if v == nil {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	return ec._SetNodeFieldsOutput(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v interface{}) (string, error) {
@@ -2667,6 +3963,10 @@ func (ec *executionContext) marshalOEdge2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgrap
 	return ret
 }
 
+func (ec *executionContext) marshalOEdgeDataItem2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdgeDataItem(ctx context.Context, sel ast.SelectionSet, v EdgeDataItem) graphql.Marshaler {
+	return ec._EdgeDataItem(ctx, sel, &v)
+}
+
 func (ec *executionContext) unmarshalOID2ᚕstring(ctx context.Context, v interface{}) ([]string, error) {
 	var vSlice []interface{}
 	if v != nil {
@@ -2699,6 +3999,18 @@ func (ec *executionContext) marshalOID2ᚕstring(ctx context.Context, sel ast.Se
 	return ret
 }
 
+func (ec *executionContext) unmarshalOLocationInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx context.Context, v interface{}) (LocationInput, error) {
+	return ec.unmarshalInputLocationInput(ctx, v)
+}
+
+func (ec *executionContext) unmarshalOLocationInput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx context.Context, v interface{}) (*LocationInput, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalOLocationInput2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx, v)
+	return &res, err
+}
+
 func (ec *executionContext) marshalONode2githubᚗcomᚋaᚑhᚋpregelᚐNode(ctx context.Context, sel ast.SelectionSet, v pregel.Node) graphql.Marshaler {
 	return ec._Node(ctx, sel, &v)
 }
@@ -2708,6 +4020,10 @@ func (ec *executionContext) marshalONode2ᚖgithubᚗcomᚋaᚑhᚋpregelᚐNode
 		return graphql.Null
 	}
 	return ec._Node(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalONodeDataItem2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNodeDataItem(ctx context.Context, sel ast.SelectionSet, v NodeDataItem) graphql.Marshaler {
+	return ec._NodeDataItem(ctx, sel, &v)
 }
 
 func (ec *executionContext) unmarshalOString2string(ctx context.Context, v interface{}) (string, error) {

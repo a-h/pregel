@@ -6,10 +6,18 @@ type PageInfo {
   startCursor: String
 }
 
+type Location {
+  lng: Float!
+  lat: Float!
+}
+
+union NodeDataItem = Location
+
 type Node {
   id: ID!
   parents(first: Int!, after: String): Connection
   children(first: Int!, after: String): Connection
+  data: [NodeDataItem]!
 }
 
 type Connection {
@@ -18,9 +26,12 @@ type Connection {
   totalCount: Int!
 }
 
+union EdgeDataItem = Location
+
 type Edge {
   cursor: String!
   node: Node
+  data: [EdgeDataItem]!
 }
 
 # Define queries and mutations.
@@ -28,18 +39,74 @@ type Query {
   get(id: ID!): Node
 }
 
-input NewNode {
+input SaveNodeInput {
   id: ID!
   parents: [ID!]
   children: [ID!]
 }
 
-input NewEdge {
+input LocationInput {
+  lng: Float!
+  lat: Float!
+}
+
+type SaveNodeOutput {
+  id: ID!
+}
+
+input SaveEdgeInput {
+  parent: ID! 
+  child: ID!
+
+  location: LocationInput
+}
+
+type SaveEdgeOutput {
   parent: ID! 
   child: ID!
 }
 
+input RemoveNodeInput {
+  id: ID!
+}
+
+type RemoveNodeOutput {
+  removed: Boolean!
+}
+
+input RemoveEdgeInput {
+  parent: ID! 
+  child: ID!
+}
+
+type RemoveEdgeOutput {
+  removed: Boolean!
+}
+
+input SetNodeFieldsInput {
+  id: ID!
+  location: LocationInput
+}
+
+type SetNodeFieldsOutput {
+  set: Boolean!
+}
+
+input SetEdgeFieldsInput {
+  parent: ID!
+  child: ID!
+  location: LocationInput
+}
+
+type SetEdgeFieldsOutput {
+  set: Boolean!
+}
+
 type Mutation {
-  createNode(node: NewNode!): ID!
-  createEdge(edge: NewEdge!): ID!
+  saveNode(node: SaveNodeInput!): SaveNodeOutput!
+  saveEdge(edge: SaveEdgeInput!): SaveEdgeOutput!
+  removeNode(input: RemoveNodeInput!): RemoveNodeOutput!
+  removeEdge(input: RemoveEdgeInput!): RemoveEdgeOutput!
+  setNodeFields(input: SetNodeFieldsInput!): SetNodeFieldsOutput!
+  setEdgeFields(input: SetEdgeFieldsInput!): SetEdgeFieldsOutput!
 }

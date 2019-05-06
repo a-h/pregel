@@ -85,7 +85,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = s.PutChildEdgeData("router", "ps4", pregel.NewData(connection{Type: "ethernet"}))
+	err = s.PutEdgeData("router", "ps4", pregel.NewData(connection{Type: "ethernet"}))
 	if err != nil {
 		fmt.Println("error modifying edge from router to ps4 to use a wireless connection", err)
 		os.Exit(1)

@@ -22,6 +22,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	store.RegisterDataType(func() interface{} {
+		return &graph.Location{}
+	})
 
 	http.Handle("/", handler.Playground("GraphQL playground", "/query"))
 	root := &graph.Resolver{
