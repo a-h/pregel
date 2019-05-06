@@ -195,8 +195,9 @@ func (s *Store) Put(nodes ...Node) (err error) {
 	return
 }
 
-// PutNodeData into the database.
+// PutNodeData into the store.
 func (s *Store) PutNodeData(id string, data Data) (err error) {
+	//TODO: What happens if there isn't a node with that ID?
 	records, err := convertDataToRecords(id, data)
 	if err != nil {
 		return
@@ -236,6 +237,37 @@ func (s *Store) PutEdges(parent string, edges ...*Edge) (err error) {
 				Item: records[i],
 			},
 		}
+	}
+	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]*dynamodb.WriteRequest{
+			*s.TableName: wrs,
+		},
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
+	})
+	if err != nil {
+		return
+	}
+	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	return
+}
+
+// PutChildEdgeData into the store.
+func (s *Store) PutChildEdgeData(parent, child string, data Data) (err error) {
+	//TODO: What happens if there isn't a node with that ID, or a matching Edge?
+	var wrs []*dynamodb.WriteRequest
+	for k, v := range data {
+		k := k
+		v := v
+		r, dErr := newDataRecord(parent, rangefield.ChildData{Child: child, DataType: k}, k, v)
+		if err != nil {
+			err = dErr
+			return
+		}
+		wrs = append(wrs, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{
+				Item: r,
+			},
+		})
 	}
 	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{
@@ -498,17 +530,47 @@ func (s *Store) Delete(id string) (err error) {
 
 // DeleteEdge deletes an edge.
 func (s *Store) DeleteEdge(parent string, child string) (err error) {
-	deleteRequests := []*dynamodb.WriteRequest{
-		&dynamodb.WriteRequest{
-			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(parent, rangefield.Child{Child: child}),
+	// Get the IDs.
+	n, ok, err := s.Get(parent)
+	if err != nil {
+		return
+	}
+	if !ok {
+		return
+	}
+
+	var deleteRequests []*dynamodb.WriteRequest
+	for _, e := range n.Children {
+		if e.ID != child {
+			continue
+		}
+		// Delete child and parent records.
+		deleteRequests = append(deleteRequests,
+			&dynamodb.WriteRequest{
+				DeleteRequest: &dynamodb.DeleteRequest{
+					Key: getID(n.ID, rangefield.Child{Child: e.ID}),
+				},
 			},
-		},
-		&dynamodb.WriteRequest{
-			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(child, rangefield.Parent{Parent: parent}),
-			},
-		},
+			&dynamodb.WriteRequest{
+				DeleteRequest: &dynamodb.DeleteRequest{
+					Key: getID(e.ID, rangefield.Parent{Parent: n.ID}),
+				},
+			})
+
+		// Delete data records.
+		for dataKey := range e.Data {
+			deleteRequests = append(deleteRequests,
+				&dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: getID(n.ID, rangefield.ChildData{Child: e.ID, DataType: dataKey}),
+					},
+				},
+				&dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: getID(e.ID, rangefield.ParentData{Parent: n.ID, DataType: dataKey}),
+					},
+				})
+		}
 	}
 	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{

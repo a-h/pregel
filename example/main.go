@@ -79,9 +79,15 @@ func main() {
 	}
 
 	fmt.Println("Adding router to ps4 edges")
-	err = s.PutEdges("router", pregel.NewEdge("ps4").WithData(connection{Type: "wired"}))
+	err = s.PutEdges("router", pregel.NewEdge("ps4").WithData(connection{Type: "wireless"}))
 	if err != nil {
 		fmt.Println("error creating a wired connection from router to ps4", err)
+		os.Exit(1)
+	}
+
+	err = s.PutChildEdgeData("router", "ps4", pregel.NewData(connection{Type: "ethernet"}))
+	if err != nil {
+		fmt.Println("error modifying edge from router to ps4 to use a wireless connection", err)
 		os.Exit(1)
 	}
 
@@ -132,7 +138,6 @@ func main() {
 	fmt.Println(string(bytes))
 
 	// Now disconnect the PS4 from the router.
-	// The deletion doesn't currently remove parent edges.
 	fmt.Println("Deleting router to ps4 edge")
 	err = s.DeleteEdge("router", "ps4")
 	if err != nil {
