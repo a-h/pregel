@@ -257,7 +257,7 @@ func (s Store) populateNodeFromRecord(itm map[string]*dynamodb.AttributeValue, n
 		typeName := *itm[fieldRecordDataType].S
 		f, ok := s.DataTypes[typeName]
 		if !ok {
-			f = func() interface{} { return map[string]interface{}{} }
+			f = func() interface{} { return &map[string]interface{}{} }
 		}
 		v := f()
 		err := s.putData(itm, v)
@@ -278,7 +278,7 @@ func (s Store) populateNodeFromRecord(itm map[string]*dynamodb.AttributeValue, n
 		typeName := *itm[fieldRecordDataType].S
 		f, ok := s.DataTypes[typeName]
 		if !ok {
-			f = func() interface{} { return map[string]interface{}{} }
+			f = func() interface{} { return &map[string]interface{}{} }
 		}
 		v := f()
 		err := s.putData(itm, v)
@@ -299,7 +299,7 @@ func (s Store) populateNodeFromRecord(itm map[string]*dynamodb.AttributeValue, n
 		typeName := *itm[fieldRecordDataType].S
 		f, ok := s.DataTypes[typeName]
 		if !ok {
-			f = func() interface{} { return map[string]interface{}{} }
+			f = func() interface{} { return &map[string]interface{}{} }
 		}
 		v := f()
 		err := s.putData(itm, v)
@@ -385,8 +385,14 @@ func (s *Store) Delete(id string) (err error) {
 				Key: getID(n.ID, rangefield.Node{}),
 			},
 		},
+		&dynamodb.WriteRequest{
+			DeleteRequest: &dynamodb.DeleteRequest{
+				Key: getID(n.ID, rangefield.NodeData{}),
+			},
+		},
 	}
 	for _, e := range n.Children {
+		// Delete child and parent records.
 		deleteRequests = append(deleteRequests,
 			&dynamodb.WriteRequest{
 				DeleteRequest: &dynamodb.DeleteRequest{
@@ -398,6 +404,21 @@ func (s *Store) Delete(id string) (err error) {
 					Key: getID(e.ID, rangefield.Parent{Parent: n.ID}),
 				},
 			})
+
+		// Delete data records.
+		for dataKey := range e.Data {
+			deleteRequests = append(deleteRequests,
+				&dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: getID(n.ID, rangefield.ChildData{Child: e.ID, DataType: dataKey}),
+					},
+				},
+				&dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: getID(e.ID, rangefield.ParentData{Parent: n.ID, DataType: dataKey}),
+					},
+				})
+		}
 	}
 	for _, e := range n.Parents {
 		deleteRequests = append(deleteRequests,
@@ -411,6 +432,21 @@ func (s *Store) Delete(id string) (err error) {
 					Key: getID(e.ID, rangefield.Child{Child: n.ID}),
 				},
 			})
+
+		// Delete data records.
+		for dataKey := range e.Data {
+			deleteRequests = append(deleteRequests,
+				&dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: getID(n.ID, rangefield.ParentData{Parent: e.ID, DataType: dataKey}),
+					},
+				},
+				&dynamodb.WriteRequest{
+					DeleteRequest: &dynamodb.DeleteRequest{
+						Key: getID(e.ID, rangefield.ChildData{Child: n.ID, DataType: dataKey}),
+					},
+				})
+		}
 	}
 	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{
