@@ -15,6 +15,21 @@ type Node struct {
 // Data attached to a node or edge.
 type Data map[string]interface{}
 
+// Add value to data.
+func (d Data) Add(v interface{}) {
+	k := reflect.TypeOf(v).Name()
+	d[k] = v
+}
+
+// NewData creates new data.
+func NewData(items ...interface{}) Data {
+	d := make(Data)
+	for _, v := range items {
+		d.Add(v)
+	}
+	return d
+}
+
 // WithData adds data to the node.
 func (n Node) WithData(v interface{}) Node {
 	k := reflect.TypeOf(v).Name()

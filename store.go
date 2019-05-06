@@ -54,18 +54,25 @@ func (s *Store) RegisterDataType(f func() interface{}) {
 func convertToRecords(n Node) (nodeRecord map[string]*dynamodb.AttributeValue,
 	nodeDataRecords, edgeRecords, edgeDataRecords []map[string]*dynamodb.AttributeValue, err error) {
 	nodeRecord = newNodeRecord(n.ID)
-	// Get the node data records.
-	for k, v := range n.Data {
+	nodeDataRecords, err = convertDataToRecords(n.ID, n.Data)
+	if err != nil {
+		return
+	}
+	edgeRecords, err = convertNodeEdgesToRecords(n.ID, n.Children, n.Parents)
+	return
+}
+
+func convertDataToRecords(id string, d Data) (nodeDataRecords []map[string]*dynamodb.AttributeValue, err error) {
+	for k, v := range d {
 		k := k
 		v := v
-		dr, dErr := newDataRecord(n.ID, rangefield.NodeData{DataType: k}, k, v)
+		dr, dErr := newDataRecord(id, rangefield.NodeData{DataType: k}, k, v)
 		if dErr != nil {
 			err = dErr
 			return
 		}
 		nodeDataRecords = append(nodeDataRecords, dr)
 	}
-	edgeRecords, err = convertNodeEdgesToRecords(n.ID, n.Children, n.Parents)
 	return
 }
 
@@ -174,6 +181,34 @@ func (s *Store) Put(nodes ...Node) (err error) {
 			return
 		}
 		wrs = append(wrs, wrb...)
+	}
+	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]*dynamodb.WriteRequest{
+			*s.TableName: wrs,
+		},
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
+	})
+	if err != nil {
+		return
+	}
+	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	return
+}
+
+// PutNodeData into the database.
+func (s *Store) PutNodeData(id string, data Data) (err error) {
+	records, err := convertDataToRecords(id, data)
+	if err != nil {
+		return
+	}
+	var wrs []*dynamodb.WriteRequest
+	for _, r := range records {
+		r := r
+		wrs = append(wrs, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{
+				Item: r,
+			},
+		})
 	}
 	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
 		RequestItems: map[string][]*dynamodb.WriteRequest{

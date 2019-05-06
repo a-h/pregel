@@ -25,6 +25,9 @@ func main() {
 	s.RegisterDataType(func() interface{} {
 		return &connection{}
 	})
+	s.RegisterDataType(func() interface{} {
+		return &Location{}
+	})
 
 	// Create a computer.
 	fmt.Println("Creating computer node")
@@ -39,15 +42,18 @@ func main() {
 
 	// Create a router and a connection to the mac.
 	fmt.Println("Creating router node")
-	routerData := router{
-		SSID: "VM675321",
-	}
 	routerToMac := pregel.NewEdge("adrian's mac").
 		WithData(connection{
 			Type: "wifi",
 		})
 	err = s.Put(pregel.NewNode("router").
-		WithData(routerData).
+		WithData(router{
+			SSID: "VM675321",
+		}).
+		WithData(Location{
+			Lat: 48.864716,
+			Lng: 2.349014,
+		}).
 		WithChildren(routerToMac))
 	if err != nil {
 		fmt.Println("error creating router", err)
@@ -148,6 +154,17 @@ func main() {
 	bytes, _ = json.Marshal(ps4)
 	fmt.Println(string(bytes))
 
+	// Move the router to London.
+	d := pregel.NewData(Location{
+		Lat: 51.509865,
+		Lng: -0.118092,
+	})
+	err = s.PutNodeData("router", d)
+	if err != nil {
+		fmt.Printf("could not move router to London: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Check the router has been disconnected too.
 	router, ok, err := s.Get("router")
 	if err != nil {
@@ -175,4 +192,10 @@ type router struct {
 
 type connection struct {
 	Type string `json:"connectionType"`
+}
+
+// Location is a copy of the same type within the GraphQL example.
+type Location struct {
+	Lng float64 `json:"lng"`
+	Lat float64 `json:"lat"`
 }
