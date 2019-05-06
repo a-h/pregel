@@ -75,9 +75,10 @@ type SaveEdgeOutput struct {
 }
 
 type SaveNodeInput struct {
-	ID       string   `json:"id"`
-	Parents  []string `json:"parents"`
-	Children []string `json:"children"`
+	ID       string         `json:"id"`
+	Parents  []string       `json:"parents"`
+	Children []string       `json:"children"`
+	Location *LocationInput `json:"location"`
 }
 
 type SaveNodeOutput struct {

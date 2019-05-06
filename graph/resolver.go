@@ -40,6 +40,18 @@ type PregelMutationResolver struct {
 // SaveNode saves Nodes.
 func (pr *PregelMutationResolver) SaveNode(ctx context.Context, input SaveNodeInput) (output *SaveNodeOutput, err error) {
 	n := pregel.NewNode(input.ID)
+	for _, p := range input.Parents {
+		n = n.WithParents(pregel.NewEdge(p))
+	}
+	for _, c := range input.Children {
+		n = n.WithChildren(pregel.NewEdge(c))
+	}
+	if input.Location != nil {
+		n = n.WithData(Location{
+			Lat: input.Location.Lat,
+			Lng: input.Location.Lng,
+		})
+	}
 	err = pr.Store.Put(n)
 	if err != nil {
 		return

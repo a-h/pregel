@@ -43,6 +43,7 @@ input SaveNodeInput {
   id: ID!
   parents: [ID!]
   children: [ID!]
+  location: LocationInput
 }
 
 input LocationInput {

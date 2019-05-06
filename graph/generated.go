@@ -523,6 +523,7 @@ input SaveNodeInput {
   id: ID!
   parents: [ID!]
   children: [ID!]
+  location: LocationInput
 }
 
 input LocationInput {
@@ -2640,6 +2641,12 @@ func (ec *executionContext) unmarshalInputSaveNodeInput(ctx context.Context, v i
 		case "children":
 			var err error
 			it.Children, err = ec.unmarshalOID2ᚕstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "location":
+			var err error
+			it.Location, err = ec.unmarshalOLocationInput2ᚖgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐLocationInput(ctx, v)
 			if err != nil {
 				return it, err
 			}

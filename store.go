@@ -85,12 +85,17 @@ func convertNodeEdgesToRecords(id string, children []*Edge, parents []*Edge) (ed
 	edgeRecords = append(edgeRecords, childRecords...)
 
 	// Add child to parent relationship.
-	parentRecords, err := convertEdgesToRecords(id, parents, newParentRecord, newChildRecord)
-	if err != nil {
-		return
+	for _, parent := range parents {
+		parent := parent
+		e := NewEdge(id)
+		e.Data = parent.Data
+		parentRecords, pErr := convertEdgesToRecords(parent.ID, []*Edge{e}, newParentRecord, newChildRecord)
+		if pErr != nil {
+			err = pErr
+			return
+		}
+		edgeRecords = append(edgeRecords, parentRecords...)
 	}
-	edgeRecords = append(edgeRecords, parentRecords...)
-
 	return
 }
 

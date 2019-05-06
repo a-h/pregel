@@ -44,13 +44,13 @@ func (n Node) WithNamedData(key string, value interface{}) Node {
 
 // WithParents adds parents to the node.
 func (n Node) WithParents(parents ...*Edge) Node {
-	n.Parents = parents
+	n.Parents = append(n.Parents, parents...)
 	return n
 }
 
 // WithChildren adds children to the node.
 func (n Node) WithChildren(children ...*Edge) Node {
-	n.Children = children
+	n.Children = append(n.Children, children...)
 	return n
 }
 

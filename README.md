@@ -117,3 +117,20 @@ mutation moveRouterToParis {
   }
 }
 ```
+
+Example: Connect a Nintendo Switch in Bruges, but have the parent router.
+
+```graphql
+mutation addSwitch {
+  saveNode(node: {
+    id: "switch"
+    parents: ["router"]
+    location: {
+      lat: 51.2605905
+      lng: 3.0820626
+    }
+  }){
+    id
+  }
+}
+```
