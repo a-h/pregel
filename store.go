@@ -202,24 +202,12 @@ func (s *Store) PutEdges(parent string, edges ...*Edge) (err error) {
 
 // PutEdgeData into the store.
 func (s *Store) PutEdgeData(parent, child string, data Data) (err error) {
-	//TODO: What happens if there isn't a node with that ID, or a matching Edge?
-	var items []map[string]*dynamodb.AttributeValue
-	for k, v := range data {
-		k := k
-		v := v
-		r, dErr := newDataRecord(parent, rangefield.ChildData{Child: child, DataType: k}, k, v)
-		if err != nil {
-			err = dErr
-			return
-		}
-		items = append(items, r)
+	if parent == "" || child == "" {
+		return ErrMissingNodeID
 	}
-	cc, err := s.Client.BatchPut(items)
-	if err != nil {
-		return
-	}
-	s.updateCapacityStats(cc)
-	return
+	e := NewEdge(child)
+	e.Data = data
+	return s.PutEdges(parent, e)
 }
 
 func getID(id string, rangeKey rangefield.RangeField) map[string]*dynamodb.AttributeValue {

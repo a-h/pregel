@@ -460,6 +460,137 @@ func TestStorePutEdge(t *testing.T) {
 	}
 }
 
+func TestStorePutEdgeData(t *testing.T) {
+	const tableName = "dynamoTableName"
+
+	tests := []struct {
+		name            string
+		parent          string
+		child           string
+		data            Data
+		expectedItems   []map[string]*dynamodb.AttributeValue
+		mockOutputError error
+		expectedErr     error
+	}{
+		{
+			name:        "Missing parent ID results in an error",
+			parent:      "",
+			child:       "childNode",
+			expectedErr: ErrMissingNodeID,
+		},
+		{
+			name:        "Missing child ID results in an error",
+			parent:      "parentNode",
+			child:       "",
+			expectedErr: ErrMissingNodeID,
+		},
+		{
+			name:   "No data still adds the node connection",
+			parent: "parentNode",
+			child:  "childNode",
+			data:   nil,
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode"),
+					},
+				},
+			},
+		},
+		{
+			name:   "Valid data results in 4 writes writes containing a copy of the edge data record for each side of the relationship",
+			parent: "parentNode",
+			child:  "childNode",
+			data: NewData(&testEdgeData{
+				EdgeDataField: 123,
+			}),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode/data/testEdgeData"),
+					},
+					"t": {
+						S: aws.String("testEdgeData"),
+					},
+					"edgeDataField": {
+						N: aws.String(strconv.Itoa(123)),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode/data/testEdgeData"),
+					},
+					"t": {
+						S: aws.String("testEdgeData"),
+					},
+					"edgeDataField": {
+						N: aws.String(strconv.Itoa(123)),
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newMockDynamoDBClient()
+			var actualItems []map[string]*dynamodb.AttributeValue
+			callCount := 0
+			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
+				defer func() { callCount++ }()
+				if callCount > 0 {
+					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
+				}
+				actualItems = items
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+			}
+			s := NewStoreWithClient(client)
+			err := s.PutEdgeData(test.parent, test.child, test.data)
+			if err != test.expectedErr {
+				t.Errorf("expected err %v, got %v", test.expectedErr, err)
+			}
+			if !reflect.DeepEqual(actualItems, test.expectedItems) {
+				t.Errorf("\nexpected:\n%s\n\ngot:\n%s\n", format(test.expectedItems), format(actualItems))
+			}
+		})
+	}
+}
+
 func format(v []map[string]*dynamodb.AttributeValue) string {
 	var b bytes.Buffer
 	for _, vv := range v {
