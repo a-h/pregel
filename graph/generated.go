@@ -44,6 +44,11 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	Computer struct {
+		Brand         func(childComplexity int) int
+		YearPurchased func(childComplexity int) int
+	}
+
 	Connection struct {
 		Edges      func(childComplexity int) int
 		PageInfo   func(childComplexity int) int
@@ -145,6 +150,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 	ec := executionContext{nil, e}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "Computer.Brand":
+		if e.complexity.Computer.Brand == nil {
+			break
+		}
+
+		return e.complexity.Computer.Brand(childComplexity), true
+
+	case "Computer.YearPurchased":
+		if e.complexity.Computer.YearPurchased == nil {
+			break
+		}
+
+		return e.complexity.Computer.YearPurchased(childComplexity), true
 
 	case "Connection.Edges":
 		if e.complexity.Connection.Edges == nil {
@@ -491,7 +510,12 @@ type Location {
   lat: Float!
 }
 
-union NodeDataItem = Location
+type Computer {
+  brand: String!
+  yearPurchased: Int!
+}
+
+union NodeDataItem = Location | Computer
 
 type Node {
   id: ID!
@@ -785,6 +809,60 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ***************************** args.gotpl *****************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _Computer_brand(ctx context.Context, field graphql.CollectedField, obj *Computer) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Computer",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Brand, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Computer_yearPurchased(ctx context.Context, field graphql.CollectedField, obj *Computer) graphql.Marshaler {
+	ctx = ec.Tracer.StartFieldExecution(ctx, field)
+	defer func() { ec.Tracer.EndFieldExecution(ctx) }()
+	rctx := &graphql.ResolverContext{
+		Object:   "Computer",
+		Field:    field,
+		Args:     nil,
+		IsMethod: false,
+	}
+	ctx = graphql.WithResolverContext(ctx, rctx)
+	ctx = ec.Tracer.StartFieldResolverExecution(ctx, rctx)
+	resTmp := ec.FieldMiddleware(ctx, obj, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.YearPurchased, nil
+	})
+	if resTmp == nil {
+		if !ec.HasError(rctx) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	rctx.Result = res
+	ctx = ec.Tracer.StartFieldChildExecution(ctx)
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
 
 func (ec *executionContext) _Connection_edges(ctx context.Context, field graphql.CollectedField, obj *Connection) graphql.Marshaler {
 	ctx = ec.Tracer.StartFieldExecution(ctx, field)
@@ -2735,6 +2813,10 @@ func (ec *executionContext) _NodeDataItem(ctx context.Context, sel ast.Selection
 		return ec._Location(ctx, sel, &obj)
 	case *Location:
 		return ec._Location(ctx, sel, obj)
+	case Computer:
+		return ec._Computer(ctx, sel, &obj)
+	case *Computer:
+		return ec._Computer(ctx, sel, obj)
 	default:
 		panic(fmt.Errorf("unexpected type %T", obj))
 	}
@@ -2743,6 +2825,38 @@ func (ec *executionContext) _NodeDataItem(ctx context.Context, sel ast.Selection
 // endregion ************************** interface.gotpl ***************************
 
 // region    **************************** object.gotpl ****************************
+
+var computerImplementors = []string{"Computer", "NodeDataItem"}
+
+func (ec *executionContext) _Computer(ctx context.Context, sel ast.SelectionSet, obj *Computer) graphql.Marshaler {
+	fields := graphql.CollectFields(ctx, sel, computerImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	invalid := false
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Computer")
+		case "brand":
+			out.Values[i] = ec._Computer_brand(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		case "yearPurchased":
+			out.Values[i] = ec._Computer_yearPurchased(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				invalid = true
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch()
+	if invalid {
+		return graphql.Null
+	}
+	return out
+}
 
 var connectionImplementors = []string{"Connection"}
 

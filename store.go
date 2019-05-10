@@ -5,35 +5,41 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/a-h/pregel/db"
 	"github.com/a-h/pregel/rangefield"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 )
 
-// NewStore creates a new store with required fields populated.
-func NewStore(region, tableName string) (store *Store, err error) {
-	conf := &aws.Config{
-		Region: aws.String(region),
-	}
-	sess, err := session.NewSession(conf)
+// NewDynamoStore creates a store which is backed by DynamoDB.
+func NewDynamoStore(region, tableName string) (store *Store, err error) {
+	client, err := db.New(region, tableName)
 	if err != nil {
-		return
+		return nil, err
 	}
+	return New(client), nil
+}
+
+// New creates a store from a DB implementation.
+func New(client DB) (store *Store) {
 	store = &Store{
-		Client:    dynamodb.New(sess),
-		TableName: aws.String(tableName),
+		Client:    client,
 		DataTypes: make(map[string]func() interface{}),
 	}
 	return
 }
 
+// DB client to access DynamoDB.
+type DB interface {
+	BatchDelete(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error)
+	BatchPut(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error)
+	QueryByID(idField, idValue string) (items []map[string]*dynamodb.AttributeValue, cc db.ConsumedCapacity, err error)
+}
+
 // Store handles storage of data in DynamoDB.
 type Store struct {
-	Client                *dynamodb.DynamoDB
-	TableName             *string
+	Client                DB
 	ConsumedCapacity      float64
 	ConsumedReadCapacity  float64
 	ConsumedWriteCapacity float64
@@ -51,14 +57,18 @@ func (s *Store) RegisterDataType(f func() interface{}) {
 	s.DataTypes[name] = f
 }
 
-func convertToRecords(n Node) (nodeRecord map[string]*dynamodb.AttributeValue,
-	nodeDataRecords, edgeRecords, edgeDataRecords []map[string]*dynamodb.AttributeValue, err error) {
-	nodeRecord = newNodeRecord(n.ID)
-	nodeDataRecords, err = convertDataToRecords(n.ID, n.Data)
+func convertToRecords(n Node) (records []map[string]*dynamodb.AttributeValue, err error) {
+	records = append(records, newNodeRecord(n.ID))
+	nodeDataRecords, err := convertDataToRecords(n.ID, n.Data)
 	if err != nil {
 		return
 	}
-	edgeRecords, err = convertNodeEdgesToRecords(n.ID, n.Children, n.Parents)
+	records = append(records, nodeDataRecords...)
+	edgeRecords, err := convertNodeEdgesToRecords(n.ID, n.Children, n.Parents)
+	if err != nil {
+		return
+	}
+	records = append(records, edgeRecords...)
 	return
 }
 
@@ -120,83 +130,29 @@ func convertEdgesToRecords(principal string, edges []*Edge, fromPrincipal record
 	return
 }
 
-func getWriteRequests(n Node) (requests []*dynamodb.WriteRequest, err error) {
-	r, ndr, er, edr, err := convertToRecords(n)
-	if err != nil {
-		return
-	}
-	// Add the root node.
-	requests = append(requests, &dynamodb.WriteRequest{
-		PutRequest: &dynamodb.PutRequest{
-			Item: r,
-		},
-	})
-	// Add the node data.
-	for _, nd := range ndr {
-		nd := nd
-		requests = append(requests, &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: nd,
-			},
-		})
-	}
-	// Add the edges.
-	for _, e := range er {
-		e := e
-		requests = append(requests, &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: e,
-			},
-		})
-	}
-	// Add the edge data.
-	for _, ed := range edr {
-		ed := ed
-		requests = append(requests, &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: ed,
-			},
-		})
-	}
-	return
-}
-
-func (s *Store) updateCapacityStats(c ...*dynamodb.ConsumedCapacity) {
-	for _, cc := range c {
-		if cc.CapacityUnits != nil {
-			s.ConsumedCapacity += *cc.CapacityUnits
-		}
-		if cc.ReadCapacityUnits != nil {
-			s.ConsumedReadCapacity += *cc.ReadCapacityUnits
-		}
-		if cc.WriteCapacityUnits != nil {
-			s.ConsumedWriteCapacity += *cc.WriteCapacityUnits
-		}
-	}
+func (s *Store) updateCapacityStats(c db.ConsumedCapacity) {
+	s.ConsumedCapacity += c.ConsumedCapacity
+	s.ConsumedReadCapacity += c.ConsumedReadCapacity
+	s.ConsumedWriteCapacity += c.ConsumedWriteCapacity
 }
 
 // Put upserts Nodes and Edges into DynamoDB.
 func (s *Store) Put(nodes ...Node) (err error) {
 	// Map from nodes into the Write Requests.
-	var wrs []*dynamodb.WriteRequest
+	var records []map[string]*dynamodb.AttributeValue
 	for _, n := range nodes {
-		wrb, wrErr := getWriteRequests(n)
-		if wrErr != nil {
-			err = wrErr
+		r, cErr := convertToRecords(n)
+		if cErr != nil {
+			err = cErr
 			return
 		}
-		wrs = append(wrs, wrb...)
+		records = append(records, r...)
 	}
-	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*s.TableName: wrs,
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	})
+	cc, err := s.Client.BatchPut(records)
 	if err != nil {
 		return
 	}
-	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	s.updateCapacityStats(cc)
 	return
 }
 
@@ -207,25 +163,11 @@ func (s *Store) PutNodeData(id string, data Data) (err error) {
 	if err != nil {
 		return
 	}
-	var wrs []*dynamodb.WriteRequest
-	for _, r := range records {
-		r := r
-		wrs = append(wrs, &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: r,
-			},
-		})
-	}
-	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*s.TableName: wrs,
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	})
+	cc, err := s.Client.BatchPut(records)
 	if err != nil {
 		return
 	}
-	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	s.updateCapacityStats(cc)
 	return
 }
 
@@ -235,31 +177,18 @@ func (s *Store) PutEdges(parent string, edges ...*Edge) (err error) {
 	if err != nil {
 		return
 	}
-	wrs := make([]*dynamodb.WriteRequest, len(records))
-	for i := 0; i < len(records); i++ {
-		wrs[i] = &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: records[i],
-			},
-		}
-	}
-	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*s.TableName: wrs,
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	})
+	cc, err := s.Client.BatchPut(records)
 	if err != nil {
 		return
 	}
-	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	s.updateCapacityStats(cc)
 	return
 }
 
 // PutEdgeData into the store.
 func (s *Store) PutEdgeData(parent, child string, data Data) (err error) {
 	//TODO: What happens if there isn't a node with that ID, or a matching Edge?
-	var wrs []*dynamodb.WriteRequest
+	var items []map[string]*dynamodb.AttributeValue
 	for k, v := range data {
 		k := k
 		v := v
@@ -268,22 +197,13 @@ func (s *Store) PutEdgeData(parent, child string, data Data) (err error) {
 			err = dErr
 			return
 		}
-		wrs = append(wrs, &dynamodb.WriteRequest{
-			PutRequest: &dynamodb.PutRequest{
-				Item: r,
-			},
-		})
+		items = append(items, r)
 	}
-	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*s.TableName: wrs,
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	})
+	cc, err := s.Client.BatchPut(items)
 	if err != nil {
 		return
 	}
-	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	s.updateCapacityStats(cc)
 	return
 }
 
@@ -392,50 +312,20 @@ func (s Store) putData(itm map[string]*dynamodb.AttributeValue, into interface{}
 
 // Get retrieves data from DynamoDB.
 func (s *Store) Get(id string) (n Node, ok bool, err error) {
-	n = NewNode("")
-
-	q := expression.Key(fieldID).Equal(expression.Value(id))
-
-	expr, err := expression.NewBuilder().
-		WithKeyCondition(q).
-		Build()
-	if err != nil {
-		err = fmt.Errorf("Store.Get: failed to build query: %v", err)
-		return
-	}
-
-	qi := &dynamodb.QueryInput{
-		TableName:                 s.TableName,
-		KeyConditionExpression:    expr.KeyCondition(),
-		ExpressionAttributeValues: expr.Values(),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ConsistentRead:            aws.Bool(true),
-		ReturnConsumedCapacity:    aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	}
-
-	var pageErr error
-	page := func(page *dynamodb.QueryOutput, lastPage bool) bool {
-		for _, itm := range page.Items {
-			pageErr = s.populateNodeFromRecord(itm, &n)
-			if pageErr != nil {
-				return false
-			}
-		}
-		s.updateCapacityStats(page.ConsumedCapacity)
-		return true
-	}
-
-	err = s.Client.QueryPages(qi, page)
+	items, cc, err := s.Client.QueryByID(fieldID, id)
 	if err != nil {
 		err = fmt.Errorf("Store.Get: failed to query pages: %v", err)
 		return
 	}
-	if pageErr != nil {
-		err = fmt.Errorf("Store.Get: failed to unmarshal data: %v", pageErr)
-		return
+	s.updateCapacityStats(cc)
+	n = NewNode("")
+	for _, itm := range items {
+		err = s.populateNodeFromRecord(itm, &n)
+		if err != nil {
+			err = fmt.Errorf("Store.Get: failed to unmarshal data: %v", err)
+			return
+		}
 	}
-
 	ok = len(n.ID) > 0
 	return
 }
@@ -451,85 +341,41 @@ func (s *Store) Delete(id string) (err error) {
 		return
 	}
 
-	deleteRequests := []*dynamodb.WriteRequest{
-		&dynamodb.WriteRequest{
-			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(n.ID, rangefield.Node{}),
-			},
-		},
-		&dynamodb.WriteRequest{
-			DeleteRequest: &dynamodb.DeleteRequest{
-				Key: getID(n.ID, rangefield.NodeData{}),
-			},
-		},
+	keysToDelete := []map[string]*dynamodb.AttributeValue{
+		getID(n.ID, rangefield.Node{}),
+		getID(n.ID, rangefield.NodeData{}),
 	}
 	for _, e := range n.Children {
 		// Delete child and parent records.
-		deleteRequests = append(deleteRequests,
-			&dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(n.ID, rangefield.Child{Child: e.ID}),
-				},
-			},
-			&dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(e.ID, rangefield.Parent{Parent: n.ID}),
-				},
-			})
+		keysToDelete = append(keysToDelete,
+			getID(n.ID, rangefield.Child{Child: e.ID}),
+			getID(e.ID, rangefield.Parent{Parent: n.ID}))
 
 		// Delete data records.
 		for dataKey := range e.Data {
-			deleteRequests = append(deleteRequests,
-				&dynamodb.WriteRequest{
-					DeleteRequest: &dynamodb.DeleteRequest{
-						Key: getID(n.ID, rangefield.ChildData{Child: e.ID, DataType: dataKey}),
-					},
-				},
-				&dynamodb.WriteRequest{
-					DeleteRequest: &dynamodb.DeleteRequest{
-						Key: getID(e.ID, rangefield.ParentData{Parent: n.ID, DataType: dataKey}),
-					},
-				})
+			keysToDelete = append(keysToDelete,
+				getID(n.ID, rangefield.ChildData{Child: e.ID, DataType: dataKey}),
+				getID(e.ID, rangefield.ParentData{Parent: n.ID, DataType: dataKey}))
 		}
 	}
 	for _, e := range n.Parents {
-		deleteRequests = append(deleteRequests,
-			&dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(n.ID, rangefield.Parent{Parent: e.ID}),
-				},
-			},
-			&dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(e.ID, rangefield.Child{Child: n.ID}),
-				},
-			})
+		keysToDelete = append(keysToDelete,
+			getID(n.ID, rangefield.Parent{Parent: e.ID}),
+			getID(e.ID, rangefield.Child{Child: n.ID}))
 
 		// Delete data records.
 		for dataKey := range e.Data {
-			deleteRequests = append(deleteRequests,
-				&dynamodb.WriteRequest{
-					DeleteRequest: &dynamodb.DeleteRequest{
-						Key: getID(n.ID, rangefield.ParentData{Parent: e.ID, DataType: dataKey}),
-					},
-				},
-				&dynamodb.WriteRequest{
-					DeleteRequest: &dynamodb.DeleteRequest{
-						Key: getID(e.ID, rangefield.ChildData{Child: n.ID, DataType: dataKey}),
-					},
-				})
+			keysToDelete = append(keysToDelete,
+				getID(n.ID, rangefield.ParentData{Parent: e.ID, DataType: dataKey}),
+				getID(e.ID, rangefield.ChildData{Child: n.ID, DataType: dataKey}))
 		}
 	}
-	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*s.TableName: deleteRequests,
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	})
+	var cc db.ConsumedCapacity
+	cc, err = s.Client.BatchDelete(keysToDelete)
 	if err != nil {
 		return
 	}
-	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	s.updateCapacityStats(cc)
 	return
 }
 
@@ -544,48 +390,28 @@ func (s *Store) DeleteEdge(parent string, child string) (err error) {
 		return
 	}
 
-	var deleteRequests []*dynamodb.WriteRequest
+	var keysToDelete []map[string]*dynamodb.AttributeValue
 	for _, e := range n.Children {
 		if e.ID != child {
 			continue
 		}
 		// Delete child and parent records.
-		deleteRequests = append(deleteRequests,
-			&dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(n.ID, rangefield.Child{Child: e.ID}),
-				},
-			},
-			&dynamodb.WriteRequest{
-				DeleteRequest: &dynamodb.DeleteRequest{
-					Key: getID(e.ID, rangefield.Parent{Parent: n.ID}),
-				},
-			})
+		keysToDelete = append(keysToDelete,
+			getID(n.ID, rangefield.Child{Child: e.ID}),
+			getID(e.ID, rangefield.Parent{Parent: n.ID}))
 
 		// Delete data records.
 		for dataKey := range e.Data {
-			deleteRequests = append(deleteRequests,
-				&dynamodb.WriteRequest{
-					DeleteRequest: &dynamodb.DeleteRequest{
-						Key: getID(n.ID, rangefield.ChildData{Child: e.ID, DataType: dataKey}),
-					},
-				},
-				&dynamodb.WriteRequest{
-					DeleteRequest: &dynamodb.DeleteRequest{
-						Key: getID(e.ID, rangefield.ParentData{Parent: n.ID, DataType: dataKey}),
-					},
-				})
+			keysToDelete = append(keysToDelete,
+				getID(n.ID, rangefield.ChildData{Child: e.ID, DataType: dataKey}),
+				getID(e.ID, rangefield.ParentData{Parent: n.ID, DataType: dataKey}))
 		}
 	}
-	bwo, err := s.Client.BatchWriteItem(&dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*s.TableName: deleteRequests,
-		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityIndexes),
-	})
+	var cc db.ConsumedCapacity
+	cc, err = s.Client.BatchDelete(keysToDelete)
 	if err != nil {
 		return
 	}
-	s.updateCapacityStats(bwo.ConsumedCapacity...)
+	s.updateCapacityStats(cc)
 	return
 }

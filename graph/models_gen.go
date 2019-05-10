@@ -14,6 +14,13 @@ type NodeDataItem interface {
 	IsNodeDataItem()
 }
 
+type Computer struct {
+	Brand         string `json:"brand"`
+	YearPurchased int    `json:"yearPurchased"`
+}
+
+func (Computer) IsNodeDataItem() {}
+
 type Connection struct {
 	Edges      []Edge   `json:"edges"`
 	PageInfo   PageInfo `json:"pageInfo"`

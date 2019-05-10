@@ -11,7 +11,12 @@ type Location {
   lat: Float!
 }
 
-union NodeDataItem = Location
+type Computer {
+  brand: String!
+  yearPurchased: Int!
+}
+
+union NodeDataItem = Location | Computer
 
 type Node {
   id: ID!
