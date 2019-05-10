@@ -1365,6 +1365,13 @@ func TestStoreDeleteEdge(t *testing.T) {
 			deleteOutputErr: fmt.Errorf("unexpected call, shouldn't need to delete anything if there's nothing to delete"),
 		},
 		{
+			name:            "A node which doesn't exist doesn't delete anything",
+			parent:          "nodeA",
+			child:           "any",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{},
+			deleteOutputErr: fmt.Errorf("unexpected call, shouldn't need to delete anything if there's nothing to delete"),
+		},
+		{
 			name:   "A node with children deletes just the matching edges, including deleting the link back from the child to the parent",
 			parent: "nodeA",
 			child:  "childNodeB",
