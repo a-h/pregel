@@ -6,16 +6,14 @@ import (
 	"os"
 
 	"github.com/a-h/pregel"
-	"github.com/a-h/pregel/db"
 )
 
 func main() {
-	db, err := db.New("eu-west-2", "pregelStoreLocal")
+	s, err := pregel.NewStore("eu-west-2", "pregelStoreLocal")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-	s := pregel.New(db)
 
 	// Register the store's types.
 	s.RegisterDataType(func() interface{} {

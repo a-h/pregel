@@ -1,7 +1,5 @@
 package pregel
 
-import "reflect"
-
 // Node within the graph.
 type Node struct {
 	ID   string `json:"id"`
@@ -17,8 +15,7 @@ type Data map[string]interface{}
 
 // Add value to data.
 func (d Data) Add(v interface{}) {
-	k := reflect.TypeOf(v).Name()
-	d[k] = v
+	d[getTypeName(v)] = v
 }
 
 // NewData creates new data.
@@ -32,8 +29,7 @@ func NewData(items ...interface{}) Data {
 
 // WithData adds data to the node.
 func (n Node) WithData(v interface{}) Node {
-	k := reflect.TypeOf(v).Name()
-	return n.WithNamedData(k, v)
+	return n.WithNamedData(getTypeName(v), v)
 }
 
 // WithNamedData adds data to the node, specifying the name to use for storage.
@@ -98,8 +94,7 @@ func NewEdge(id string) *Edge {
 
 // WithData adds data to the edge.
 func (e Edge) WithData(v interface{}) *Edge {
-	k := reflect.TypeOf(v).Name()
-	return e.WithNamedData(k, v)
+	return e.WithNamedData(getTypeName(v), v)
 }
 
 // WithNamedData adds data to the edge.

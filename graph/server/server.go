@@ -18,7 +18,7 @@ func main() {
 		port = defaultPort
 	}
 
-	store, err := pregel.NewDynamoStore("eu-west-2", "pregelStoreLocal")
+	store, err := pregel.NewStore("eu-west-2", "pregelStoreLocal")
 	if err != nil {
 		log.Fatal(err)
 	}

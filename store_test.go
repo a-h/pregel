@@ -54,6 +54,11 @@ func TestStorePut(t *testing.T) {
 		expectedErr     error
 	}{
 		{
+			name:        "Missing node ID results in an error",
+			node:        NewNode(""),
+			expectedErr: ErrMissingNodeID,
+		},
+		{
 			name: "Put node without data results in a simple node write",
 			node: NewNode("id"),
 			expectedItems: []map[string]*dynamodb.AttributeValue{
@@ -242,8 +247,209 @@ func TestStorePut(t *testing.T) {
 				actualItems = items
 				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
 			}
-			s := New(client)
+			s := NewStoreWithClient(client)
 			err := s.Put(test.node)
+			if err != test.expectedErr {
+				t.Errorf("expected err %v, got %v", test.expectedErr, err)
+			}
+			if !reflect.DeepEqual(actualItems, test.expectedItems) {
+				t.Errorf("\nexpected:\n%s\n\ngot:\n%s\n", format(test.expectedItems), format(actualItems))
+			}
+		})
+	}
+}
+
+func TestStorePutNodeData(t *testing.T) {
+	const tableName = "dynamoTableName"
+
+	tests := []struct {
+		name string
+		// id of the node to add data to
+		id              string
+		data            Data
+		expectedItems   []map[string]*dynamodb.AttributeValue
+		mockOutputError error
+		expectedErr     error
+	}{
+		{
+			name:        "Missing node ID results in an error",
+			id:          "",
+			expectedErr: ErrMissingNodeID,
+		},
+		{
+			name: "Nil data results in no writes",
+			id:   "nodeA",
+			data: nil,
+		},
+		{
+			name: "No data results in no writes",
+			id:   "nodeA",
+			data: NewData(),
+		},
+		{
+			name: "Put node with data results in two writes, the node itself, plus a data record",
+			id:   "nodeA",
+			data: NewData(testNodeData{
+				ExtraAttribute: "ExtraValue",
+			}),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node/data/testNodeData"),
+					},
+					"t": {
+						S: aws.String("testNodeData"),
+					},
+					"extra": {
+						S: aws.String("ExtraValue"),
+					},
+				},
+			},
+			mockOutputError: nil,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newMockDynamoDBClient()
+			var actualItems []map[string]*dynamodb.AttributeValue
+			callCount := 0
+			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
+				defer func() { callCount++ }()
+				if callCount > 0 {
+					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
+				}
+				actualItems = items
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+			}
+			s := NewStoreWithClient(client)
+			err := s.PutNodeData(test.id, test.data)
+			if err != test.expectedErr {
+				t.Errorf("expected err %v, got %v", test.expectedErr, err)
+			}
+			if !reflect.DeepEqual(actualItems, test.expectedItems) {
+				t.Errorf("\nexpected:\n%s\n\ngot:\n%s\n", format(test.expectedItems), format(actualItems))
+			}
+		})
+	}
+}
+
+func TestStorePutEdge(t *testing.T) {
+	const tableName = "dynamoTableName"
+
+	tests := []struct {
+		name            string
+		parent          string
+		edge            *Edge
+		expectedItems   []map[string]*dynamodb.AttributeValue
+		mockOutputError error
+		expectedErr     error
+	}{
+		{
+			name:        "Missing parent ID results in an error",
+			parent:      "",
+			expectedErr: ErrMissingNodeID,
+		},
+		{
+			name:   "Edge with no data results in two writes, a parent and a child",
+			parent: "parentNode",
+			edge:   NewEdge("childNode"),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode"),
+					},
+				},
+			},
+		},
+		{
+			name:   "An edge with data results in 4 writes writes, a parent and a child, plus an edge data record for each",
+			parent: "parentNode",
+			edge: NewEdge("childNode").WithData(&testEdgeData{
+				EdgeDataField: 123,
+			}),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode/data/testEdgeData"),
+					},
+					"t": {
+						S: aws.String("testEdgeData"),
+					},
+					"edgeDataField": {
+						N: aws.String(strconv.Itoa(123)),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode/data/testEdgeData"),
+					},
+					"t": {
+						S: aws.String("testEdgeData"),
+					},
+					"edgeDataField": {
+						N: aws.String(strconv.Itoa(123)),
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newMockDynamoDBClient()
+			var actualItems []map[string]*dynamodb.AttributeValue
+			callCount := 0
+			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
+				defer func() { callCount++ }()
+				if callCount > 0 {
+					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
+				}
+				actualItems = items
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+			}
+			s := NewStoreWithClient(client)
+			err := s.PutEdges(test.parent, test.edge)
 			if err != test.expectedErr {
 				t.Errorf("expected err %v, got %v", test.expectedErr, err)
 			}

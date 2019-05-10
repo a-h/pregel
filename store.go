@@ -12,17 +12,17 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-// NewDynamoStore creates a store which is backed by DynamoDB.
-func NewDynamoStore(region, tableName string) (store *Store, err error) {
+// NewStore creates a store which is backed by DynamoDB.
+func NewStore(region, tableName string) (store *Store, err error) {
 	client, err := db.New(region, tableName)
 	if err != nil {
 		return nil, err
 	}
-	return New(client), nil
+	return NewStoreWithClient(client), nil
 }
 
-// New creates a store from a DB implementation.
-func New(client DB) (store *Store) {
+// NewStoreWithClient creates a store from a DB implementation.
+func NewStoreWithClient(client DB) (store *Store) {
 	store = &Store{
 		Client:    client,
 		DataTypes: make(map[string]func() interface{}),
@@ -49,17 +49,20 @@ type Store struct {
 // RegisterDataType registers a data type.
 func (s *Store) RegisterDataType(f func() interface{}) {
 	v := f()
-	t := reflect.TypeOf(v)
-	name := t.Name()
+	s.DataTypes[getTypeName(v)] = f
+}
+
+func getTypeName(of interface{}) string {
+	t := reflect.TypeOf(of)
 	if t.Kind() == reflect.Ptr {
-		name = t.Elem().Name()
+		return t.Elem().Name()
 	}
-	s.DataTypes[name] = f
+	return t.Name()
 }
 
 func convertToRecords(n Node) (records []map[string]*dynamodb.AttributeValue, err error) {
 	records = append(records, newNodeRecord(n.ID))
-	nodeDataRecords, err := convertDataToRecords(n.ID, n.Data)
+	nodeDataRecords, err := convertNodeDataToRecords(n.ID, n.Data)
 	if err != nil {
 		return
 	}
@@ -72,7 +75,7 @@ func convertToRecords(n Node) (records []map[string]*dynamodb.AttributeValue, er
 	return
 }
 
-func convertDataToRecords(id string, d Data) (nodeDataRecords []map[string]*dynamodb.AttributeValue, err error) {
+func convertNodeDataToRecords(id string, d Data) (nodeDataRecords []map[string]*dynamodb.AttributeValue, err error) {
 	for k, v := range d {
 		k := k
 		v := v
@@ -141,6 +144,9 @@ func (s *Store) Put(nodes ...Node) (err error) {
 	// Map from nodes into the Write Requests.
 	var records []map[string]*dynamodb.AttributeValue
 	for _, n := range nodes {
+		if n.ID == "" {
+			return ErrMissingNodeID
+		}
 		r, cErr := convertToRecords(n)
 		if cErr != nil {
 			err = cErr
@@ -158,8 +164,14 @@ func (s *Store) Put(nodes ...Node) (err error) {
 
 // PutNodeData into the store.
 func (s *Store) PutNodeData(id string, data Data) (err error) {
+	if id == "" {
+		return ErrMissingNodeID
+	}
+	if len(data) == 0 {
+		return
+	}
 	//TODO: What happens if there isn't a node with that ID?
-	records, err := convertDataToRecords(id, data)
+	records, err := convertNodeDataToRecords(id, data)
 	if err != nil {
 		return
 	}
@@ -173,6 +185,9 @@ func (s *Store) PutNodeData(id string, data Data) (err error) {
 
 // PutEdges into the store.
 func (s *Store) PutEdges(parent string, edges ...*Edge) (err error) {
+	if parent == "" {
+		return ErrMissingNodeID
+	}
 	records, err := convertNodeEdgesToRecords(parent, edges, nil)
 	if err != nil {
 		return
@@ -217,6 +232,9 @@ func getID(id string, rangeKey rangefield.RangeField) map[string]*dynamodb.Attri
 		},
 	}
 }
+
+// ErrMissingNodeID is returned when a node's ID is empty.
+var ErrMissingNodeID = errors.New("invalid node ID, IDs cannot be empty")
 
 var errRecordIsMissingARangeField = errors.New("record is missing a range field")
 var errRecordTypeFieldIsNil = errors.New("the record's range field is nil")
