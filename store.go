@@ -167,20 +167,9 @@ func (s *Store) PutNodeData(id string, data Data) (err error) {
 	if id == "" {
 		return ErrMissingNodeID
 	}
-	if len(data) == 0 {
-		return
-	}
-	//TODO: What happens if there isn't a node with that ID?
-	records, err := convertNodeDataToRecords(id, data)
-	if err != nil {
-		return
-	}
-	cc, err := s.Client.BatchPut(records)
-	if err != nil {
-		return
-	}
-	s.updateCapacityStats(cc)
-	return
+	n := NewNode(id)
+	n.Data = data
+	return s.Put(n)
 }
 
 // PutEdges into the store.
@@ -318,6 +307,9 @@ func (s Store) putData(itm map[string]*dynamodb.AttributeValue, into interface{}
 
 // Get retrieves data from DynamoDB.
 func (s *Store) Get(id string) (n Node, ok bool, err error) {
+	if id == "" {
+		return
+	}
 	items, cc, err := s.Client.QueryByID(fieldID, id)
 	if err != nil {
 		err = fmt.Errorf("Store.Get: failed to query pages: %v", err)

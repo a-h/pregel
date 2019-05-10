@@ -44,8 +44,6 @@ type testEdgeData struct {
 }
 
 func TestStorePut(t *testing.T) {
-	const tableName = "dynamoTableName"
-
 	tests := []struct {
 		name            string
 		node            Node
@@ -202,7 +200,7 @@ func TestStorePut(t *testing.T) {
 						S: aws.String("testEdgeData"),
 					},
 					"edgeDataField": {
-						N: aws.String(strconv.FormatInt(123, 10)),
+						N: aws.String(strconv.Itoa(123)),
 					},
 				},
 				map[string]*dynamodb.AttributeValue{
@@ -224,7 +222,7 @@ func TestStorePut(t *testing.T) {
 						S: aws.String("testEdgeData"),
 					},
 					"edgeDataField": {
-						N: aws.String(strconv.FormatInt(123, 10)),
+						N: aws.String(strconv.Itoa(123)),
 					},
 				},
 			},
@@ -260,8 +258,6 @@ func TestStorePut(t *testing.T) {
 }
 
 func TestStorePutNodeData(t *testing.T) {
-	const tableName = "dynamoTableName"
-
 	tests := []struct {
 		name string
 		// id of the node to add data to
@@ -277,14 +273,18 @@ func TestStorePutNodeData(t *testing.T) {
 			expectedErr: ErrMissingNodeID,
 		},
 		{
-			name: "Nil data results in no writes",
+			name: "No data results in just the node record",
 			id:   "nodeA",
-			data: nil,
-		},
-		{
-			name: "No data results in no writes",
-			id:   "nodeA",
-			data: NewData(),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
 		},
 		{
 			name: "Put node with data results in two writes, the node itself, plus a data record",
@@ -293,6 +293,14 @@ func TestStorePutNodeData(t *testing.T) {
 				ExtraAttribute: "ExtraValue",
 			}),
 			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
 				map[string]*dynamodb.AttributeValue{
 					"id": {
 						S: aws.String("nodeA"),
@@ -340,8 +348,6 @@ func TestStorePutNodeData(t *testing.T) {
 }
 
 func TestStorePutEdge(t *testing.T) {
-	const tableName = "dynamoTableName"
-
 	tests := []struct {
 		name            string
 		parent          string
@@ -461,8 +467,6 @@ func TestStorePutEdge(t *testing.T) {
 }
 
 func TestStorePutEdgeData(t *testing.T) {
-	const tableName = "dynamoTableName"
-
 	tests := []struct {
 		name            string
 		parent          string
@@ -586,6 +590,256 @@ func TestStorePutEdgeData(t *testing.T) {
 			}
 			if !reflect.DeepEqual(actualItems, test.expectedItems) {
 				t.Errorf("\nexpected:\n%s\n\ngot:\n%s\n", format(test.expectedItems), format(actualItems))
+			}
+		})
+	}
+}
+
+func TestStoreGet(t *testing.T) {
+	tests := []struct {
+		name            string
+		id              string
+		recordsToReturn []map[string]*dynamodb.AttributeValue
+		expected        Node
+		expectedOK      bool
+		mockOutputError error
+		expectedErr     error
+	}{
+		{
+			name:       "Missing node ID results in no error, and no results",
+			id:         "",
+			expectedOK: false,
+		},
+		{
+			name: "A node record can be returned",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			expected:   NewNode("nodeA"),
+			expectedOK: true,
+		},
+		{
+			name: "A node record can be returned with its data",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node/data/testNodeData"),
+					},
+					"t": {
+						S: aws.String("testNodeData"),
+					},
+					"extra": {
+						N: aws.String("ABC"),
+					},
+				},
+			},
+			expected: NewNode("nodeA").WithData(&testNodeData{
+				ExtraAttribute: "ABC",
+			}),
+			expectedOK: true,
+		},
+		{
+			name: "A node record can be returned with its child edges",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+			},
+			expected:   NewNode("nodeA").WithChildren(NewEdge("childNodeA"), NewEdge("childNodeB")),
+			expectedOK: true,
+		},
+		{
+			name: "A node record can be returned with its parent edges",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNodeB"),
+					},
+				},
+			},
+			expected:   NewNode("nodeA").WithParents(NewEdge("parentNodeA"), NewEdge("parentNodeB")),
+			expectedOK: true,
+		},
+		{
+			name: "A node record can be returned with its parents, children, edge data and node data",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node/data/testNodeData"),
+					},
+					"t": {
+						S: aws.String("testNodeData"),
+					},
+					"extra": {
+						N: aws.String("ABC"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNodeB"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeA/data/testEdgeData"),
+					},
+					"t": {
+						S: aws.String("testEdgeData"),
+					},
+					"edgeDataField": {
+						N: aws.String(strconv.Itoa(666)),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+			},
+			expected: NewNode("nodeA").
+				WithData(&testNodeData{ExtraAttribute: "ABC"}).
+				WithParents(NewEdge("parentNodeA"), NewEdge("parentNodeB")).
+				WithChildren(NewEdge("childNodeA").WithData(&testEdgeData{EdgeDataField: 666}), NewEdge("childNodeB")),
+			expectedOK: true,
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newMockDynamoDBClient()
+			callCount := 0
+			client.queryByIDer = func(idField, idValue string) ([]map[string]*dynamodb.AttributeValue, db.ConsumedCapacity, error) {
+				if idField != "id" {
+					t.Errorf("unexpected idField value of '%s'", idField)
+				}
+				if idValue != test.id {
+					t.Errorf("expected id of '%s', got '%s'", test.id, idValue)
+				}
+				defer func() { callCount++ }()
+				if callCount > 0 {
+					t.Errorf("expected QueryByID to be called once, but was called %d times", callCount+1)
+				}
+				cc := db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}
+				err := test.mockOutputError
+				return test.recordsToReturn, cc, err
+			}
+			s := NewStoreWithClient(client)
+			s.RegisterDataType(func() interface{} {
+				return &testNodeData{}
+			})
+			s.RegisterDataType(func() interface{} {
+				return &testEdgeData{}
+			})
+			n, ok, err := s.Get(test.id)
+			if err != test.expectedErr {
+				t.Errorf("expected err %v, got %v", test.expectedErr, err)
+			}
+			if ok != test.expectedOK {
+				t.Errorf("expected OK %v, got %v", test.expectedOK, ok)
+			}
+			if !reflect.DeepEqual(n, test.expected) {
+				t.Errorf("\nexpected:\n%+v\n\ngot:\n%+v\n", test.expected, n)
 			}
 		})
 	}
