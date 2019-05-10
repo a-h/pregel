@@ -151,77 +151,77 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 	_ = ec
 	switch typeName + "." + field {
 
-	case "Computer.Brand":
+	case "Computer.brand":
 		if e.complexity.Computer.Brand == nil {
 			break
 		}
 
 		return e.complexity.Computer.Brand(childComplexity), true
 
-	case "Computer.YearPurchased":
+	case "Computer.yearPurchased":
 		if e.complexity.Computer.YearPurchased == nil {
 			break
 		}
 
 		return e.complexity.Computer.YearPurchased(childComplexity), true
 
-	case "Connection.Edges":
+	case "Connection.edges":
 		if e.complexity.Connection.Edges == nil {
 			break
 		}
 
 		return e.complexity.Connection.Edges(childComplexity), true
 
-	case "Connection.PageInfo":
+	case "Connection.pageInfo":
 		if e.complexity.Connection.PageInfo == nil {
 			break
 		}
 
 		return e.complexity.Connection.PageInfo(childComplexity), true
 
-	case "Connection.TotalCount":
+	case "Connection.totalCount":
 		if e.complexity.Connection.TotalCount == nil {
 			break
 		}
 
 		return e.complexity.Connection.TotalCount(childComplexity), true
 
-	case "Edge.Cursor":
+	case "Edge.cursor":
 		if e.complexity.Edge.Cursor == nil {
 			break
 		}
 
 		return e.complexity.Edge.Cursor(childComplexity), true
 
-	case "Edge.Data":
+	case "Edge.data":
 		if e.complexity.Edge.Data == nil {
 			break
 		}
 
 		return e.complexity.Edge.Data(childComplexity), true
 
-	case "Edge.Node":
+	case "Edge.node":
 		if e.complexity.Edge.Node == nil {
 			break
 		}
 
 		return e.complexity.Edge.Node(childComplexity), true
 
-	case "Location.Lat":
+	case "Location.lat":
 		if e.complexity.Location.Lat == nil {
 			break
 		}
 
 		return e.complexity.Location.Lat(childComplexity), true
 
-	case "Location.Lng":
+	case "Location.lng":
 		if e.complexity.Location.Lng == nil {
 			break
 		}
 
 		return e.complexity.Location.Lng(childComplexity), true
 
-	case "Mutation.RemoveEdge":
+	case "Mutation.removeEdge":
 		if e.complexity.Mutation.RemoveEdge == nil {
 			break
 		}
@@ -233,7 +233,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.RemoveEdge(childComplexity, args["input"].(RemoveEdgeInput)), true
 
-	case "Mutation.RemoveNode":
+	case "Mutation.removeNode":
 		if e.complexity.Mutation.RemoveNode == nil {
 			break
 		}
@@ -245,7 +245,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.RemoveNode(childComplexity, args["input"].(RemoveNodeInput)), true
 
-	case "Mutation.SaveEdge":
+	case "Mutation.saveEdge":
 		if e.complexity.Mutation.SaveEdge == nil {
 			break
 		}
@@ -257,7 +257,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.SaveEdge(childComplexity, args["edge"].(SaveEdgeInput)), true
 
-	case "Mutation.SaveNode":
+	case "Mutation.saveNode":
 		if e.complexity.Mutation.SaveNode == nil {
 			break
 		}
@@ -269,7 +269,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.SaveNode(childComplexity, args["node"].(SaveNodeInput)), true
 
-	case "Mutation.SetEdgeFields":
+	case "Mutation.setEdgeFields":
 		if e.complexity.Mutation.SetEdgeFields == nil {
 			break
 		}
@@ -281,7 +281,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.SetEdgeFields(childComplexity, args["input"].(SetEdgeFieldsInput)), true
 
-	case "Mutation.SetNodeFields":
+	case "Mutation.setNodeFields":
 		if e.complexity.Mutation.SetNodeFields == nil {
 			break
 		}
@@ -293,7 +293,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.SetNodeFields(childComplexity, args["input"].(SetNodeFieldsInput)), true
 
-	case "Node.Children":
+	case "Node.children":
 		if e.complexity.Node.Children == nil {
 			break
 		}
@@ -305,21 +305,21 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Node.Children(childComplexity, args["first"].(int), args["after"].(*string)), true
 
-	case "Node.Data":
+	case "Node.data":
 		if e.complexity.Node.Data == nil {
 			break
 		}
 
 		return e.complexity.Node.Data(childComplexity), true
 
-	case "Node.ID":
+	case "Node.id":
 		if e.complexity.Node.ID == nil {
 			break
 		}
 
 		return e.complexity.Node.ID(childComplexity), true
 
-	case "Node.Parents":
+	case "Node.parents":
 		if e.complexity.Node.Parents == nil {
 			break
 		}
@@ -331,35 +331,35 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Node.Parents(childComplexity, args["first"].(int), args["after"].(*string)), true
 
-	case "PageInfo.EndCursor":
+	case "PageInfo.endCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
 			break
 		}
 
 		return e.complexity.PageInfo.EndCursor(childComplexity), true
 
-	case "PageInfo.HasNextPage":
+	case "PageInfo.hasNextPage":
 		if e.complexity.PageInfo.HasNextPage == nil {
 			break
 		}
 
 		return e.complexity.PageInfo.HasNextPage(childComplexity), true
 
-	case "PageInfo.HasPreviousPage":
+	case "PageInfo.hasPreviousPage":
 		if e.complexity.PageInfo.HasPreviousPage == nil {
 			break
 		}
 
 		return e.complexity.PageInfo.HasPreviousPage(childComplexity), true
 
-	case "PageInfo.StartCursor":
+	case "PageInfo.startCursor":
 		if e.complexity.PageInfo.StartCursor == nil {
 			break
 		}
 
 		return e.complexity.PageInfo.StartCursor(childComplexity), true
 
-	case "Query.Get":
+	case "Query.get":
 		if e.complexity.Query.Get == nil {
 			break
 		}
@@ -371,49 +371,49 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Get(childComplexity, args["id"].(string)), true
 
-	case "RemoveEdgeOutput.Removed":
+	case "RemoveEdgeOutput.removed":
 		if e.complexity.RemoveEdgeOutput.Removed == nil {
 			break
 		}
 
 		return e.complexity.RemoveEdgeOutput.Removed(childComplexity), true
 
-	case "RemoveNodeOutput.Removed":
+	case "RemoveNodeOutput.removed":
 		if e.complexity.RemoveNodeOutput.Removed == nil {
 			break
 		}
 
 		return e.complexity.RemoveNodeOutput.Removed(childComplexity), true
 
-	case "SaveEdgeOutput.Child":
+	case "SaveEdgeOutput.child":
 		if e.complexity.SaveEdgeOutput.Child == nil {
 			break
 		}
 
 		return e.complexity.SaveEdgeOutput.Child(childComplexity), true
 
-	case "SaveEdgeOutput.Parent":
+	case "SaveEdgeOutput.parent":
 		if e.complexity.SaveEdgeOutput.Parent == nil {
 			break
 		}
 
 		return e.complexity.SaveEdgeOutput.Parent(childComplexity), true
 
-	case "SaveNodeOutput.ID":
+	case "SaveNodeOutput.id":
 		if e.complexity.SaveNodeOutput.ID == nil {
 			break
 		}
 
 		return e.complexity.SaveNodeOutput.ID(childComplexity), true
 
-	case "SetEdgeFieldsOutput.Set":
+	case "SetEdgeFieldsOutput.set":
 		if e.complexity.SetEdgeFieldsOutput.Set == nil {
 			break
 		}
 
 		return e.complexity.SetEdgeFieldsOutput.Set(childComplexity), true
 
-	case "SetNodeFieldsOutput.Set":
+	case "SetNodeFieldsOutput.set":
 		if e.complexity.SetNodeFieldsOutput.Set == nil {
 			break
 		}
@@ -2829,7 +2829,7 @@ func (ec *executionContext) _NodeDataItem(ctx context.Context, sel ast.Selection
 var computerImplementors = []string{"Computer", "NodeDataItem"}
 
 func (ec *executionContext) _Computer(ctx context.Context, sel ast.SelectionSet, obj *Computer) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, computerImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, computerImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -2861,7 +2861,7 @@ func (ec *executionContext) _Computer(ctx context.Context, sel ast.SelectionSet,
 var connectionImplementors = []string{"Connection"}
 
 func (ec *executionContext) _Connection(ctx context.Context, sel ast.SelectionSet, obj *Connection) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, connectionImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, connectionImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -2895,7 +2895,7 @@ func (ec *executionContext) _Connection(ctx context.Context, sel ast.SelectionSe
 var edgeImplementors = []string{"Edge"}
 
 func (ec *executionContext) _Edge(ctx context.Context, sel ast.SelectionSet, obj *Edge) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, edgeImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, edgeImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -2929,7 +2929,7 @@ func (ec *executionContext) _Edge(ctx context.Context, sel ast.SelectionSet, obj
 var locationImplementors = []string{"Location", "NodeDataItem", "EdgeDataItem"}
 
 func (ec *executionContext) _Location(ctx context.Context, sel ast.SelectionSet, obj *Location) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, locationImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, locationImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -2961,7 +2961,7 @@ func (ec *executionContext) _Location(ctx context.Context, sel ast.SelectionSet,
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, mutationImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, mutationImplementors)
 
 	ctx = graphql.WithResolverContext(ctx, &graphql.ResolverContext{
 		Object: "Mutation",
@@ -3017,7 +3017,7 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 var nodeImplementors = []string{"Node"}
 
 func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj *pregel.Node) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, nodeImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, nodeImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3080,7 +3080,7 @@ func (ec *executionContext) _Node(ctx context.Context, sel ast.SelectionSet, obj
 var pageInfoImplementors = []string{"PageInfo"}
 
 func (ec *executionContext) _PageInfo(ctx context.Context, sel ast.SelectionSet, obj *PageInfo) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, pageInfoImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, pageInfoImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3116,7 +3116,7 @@ func (ec *executionContext) _PageInfo(ctx context.Context, sel ast.SelectionSet,
 var queryImplementors = []string{"Query"}
 
 func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, queryImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, queryImplementors)
 
 	ctx = graphql.WithResolverContext(ctx, &graphql.ResolverContext{
 		Object: "Query",
@@ -3157,7 +3157,7 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 var removeEdgeOutputImplementors = []string{"RemoveEdgeOutput"}
 
 func (ec *executionContext) _RemoveEdgeOutput(ctx context.Context, sel ast.SelectionSet, obj *RemoveEdgeOutput) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, removeEdgeOutputImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, removeEdgeOutputImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3184,7 +3184,7 @@ func (ec *executionContext) _RemoveEdgeOutput(ctx context.Context, sel ast.Selec
 var removeNodeOutputImplementors = []string{"RemoveNodeOutput"}
 
 func (ec *executionContext) _RemoveNodeOutput(ctx context.Context, sel ast.SelectionSet, obj *RemoveNodeOutput) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, removeNodeOutputImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, removeNodeOutputImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3211,7 +3211,7 @@ func (ec *executionContext) _RemoveNodeOutput(ctx context.Context, sel ast.Selec
 var saveEdgeOutputImplementors = []string{"SaveEdgeOutput"}
 
 func (ec *executionContext) _SaveEdgeOutput(ctx context.Context, sel ast.SelectionSet, obj *SaveEdgeOutput) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, saveEdgeOutputImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, saveEdgeOutputImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3243,7 +3243,7 @@ func (ec *executionContext) _SaveEdgeOutput(ctx context.Context, sel ast.Selecti
 var saveNodeOutputImplementors = []string{"SaveNodeOutput"}
 
 func (ec *executionContext) _SaveNodeOutput(ctx context.Context, sel ast.SelectionSet, obj *SaveNodeOutput) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, saveNodeOutputImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, saveNodeOutputImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3270,7 +3270,7 @@ func (ec *executionContext) _SaveNodeOutput(ctx context.Context, sel ast.Selecti
 var setEdgeFieldsOutputImplementors = []string{"SetEdgeFieldsOutput"}
 
 func (ec *executionContext) _SetEdgeFieldsOutput(ctx context.Context, sel ast.SelectionSet, obj *SetEdgeFieldsOutput) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, setEdgeFieldsOutputImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, setEdgeFieldsOutputImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3297,7 +3297,7 @@ func (ec *executionContext) _SetEdgeFieldsOutput(ctx context.Context, sel ast.Se
 var setNodeFieldsOutputImplementors = []string{"SetNodeFieldsOutput"}
 
 func (ec *executionContext) _SetNodeFieldsOutput(ctx context.Context, sel ast.SelectionSet, obj *SetNodeFieldsOutput) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, setNodeFieldsOutputImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, setNodeFieldsOutputImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3324,7 +3324,7 @@ func (ec *executionContext) _SetNodeFieldsOutput(ctx context.Context, sel ast.Se
 var __DirectiveImplementors = []string{"__Directive"}
 
 func (ec *executionContext) ___Directive(ctx context.Context, sel ast.SelectionSet, obj *introspection.Directive) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, __DirectiveImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, __DirectiveImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3363,7 +3363,7 @@ func (ec *executionContext) ___Directive(ctx context.Context, sel ast.SelectionS
 var __EnumValueImplementors = []string{"__EnumValue"}
 
 func (ec *executionContext) ___EnumValue(ctx context.Context, sel ast.SelectionSet, obj *introspection.EnumValue) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, __EnumValueImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, __EnumValueImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3399,7 +3399,7 @@ func (ec *executionContext) ___EnumValue(ctx context.Context, sel ast.SelectionS
 var __FieldImplementors = []string{"__Field"}
 
 func (ec *executionContext) ___Field(ctx context.Context, sel ast.SelectionSet, obj *introspection.Field) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, __FieldImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, __FieldImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3445,7 +3445,7 @@ func (ec *executionContext) ___Field(ctx context.Context, sel ast.SelectionSet, 
 var __InputValueImplementors = []string{"__InputValue"}
 
 func (ec *executionContext) ___InputValue(ctx context.Context, sel ast.SelectionSet, obj *introspection.InputValue) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, __InputValueImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, __InputValueImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3481,7 +3481,7 @@ func (ec *executionContext) ___InputValue(ctx context.Context, sel ast.Selection
 var __SchemaImplementors = []string{"__Schema"}
 
 func (ec *executionContext) ___Schema(ctx context.Context, sel ast.SelectionSet, obj *introspection.Schema) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, __SchemaImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, __SchemaImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3522,7 +3522,7 @@ func (ec *executionContext) ___Schema(ctx context.Context, sel ast.SelectionSet,
 var __TypeImplementors = []string{"__Type"}
 
 func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, obj *introspection.Type) graphql.Marshaler {
-	fields := graphql.CollectFields(ctx, sel, __TypeImplementors)
+	fields := graphql.CollectFields(ec.RequestContext, sel, __TypeImplementors)
 
 	out := graphql.NewFieldSet(fields)
 	invalid := false
@@ -3571,7 +3571,13 @@ func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v interf
 }
 
 func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.SelectionSet, v bool) graphql.Marshaler {
-	return graphql.MarshalBoolean(v)
+	res := graphql.MarshalBoolean(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) marshalNEdge2githubᚗcomᚋaᚑhᚋpregelᚋgraphᚐEdge(ctx context.Context, sel ast.SelectionSet, v Edge) graphql.Marshaler {
@@ -3620,7 +3626,13 @@ func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v inter
 }
 
 func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.SelectionSet, v float64) graphql.Marshaler {
-	return graphql.MarshalFloat(v)
+	res := graphql.MarshalFloat(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v interface{}) (string, error) {
@@ -3628,7 +3640,13 @@ func (ec *executionContext) unmarshalNID2string(ctx context.Context, v interface
 }
 
 func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
-	return graphql.MarshalID(v)
+	res := graphql.MarshalID(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v interface{}) (int, error) {
@@ -3636,7 +3654,13 @@ func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v interface{}
 }
 
 func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
-	return graphql.MarshalInt(v)
+	res := graphql.MarshalInt(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) marshalNNodeDataItem2ᚕgithubᚗcomᚋaᚑhᚋpregelᚋgraphᚐNodeDataItem(ctx context.Context, sel ast.SelectionSet, v []NodeDataItem) graphql.Marshaler {
@@ -3793,7 +3817,13 @@ func (ec *executionContext) unmarshalNString2string(ctx context.Context, v inter
 }
 
 func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
-	return graphql.MarshalString(v)
+	res := graphql.MarshalString(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) marshalN__Directive2githubᚗcomᚋ99designsᚋgqlgenᚋgraphqlᚋintrospectionᚐDirective(ctx context.Context, sel ast.SelectionSet, v introspection.Directive) graphql.Marshaler {
@@ -3842,7 +3872,13 @@ func (ec *executionContext) unmarshalN__DirectiveLocation2string(ctx context.Con
 }
 
 func (ec *executionContext) marshalN__DirectiveLocation2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
-	return graphql.MarshalString(v)
+	res := graphql.MarshalString(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) unmarshalN__DirectiveLocation2ᚕstring(ctx context.Context, v interface{}) ([]string, error) {
@@ -4007,7 +4043,13 @@ func (ec *executionContext) unmarshalN__TypeKind2string(ctx context.Context, v i
 }
 
 func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
-	return graphql.MarshalString(v)
+	res := graphql.MarshalString(v)
+	if res == graphql.Null {
+		if !ec.HasError(graphql.GetResolverContext(ctx)) {
+			ec.Errorf(ctx, "must not be null")
+		}
+	}
+	return res
 }
 
 func (ec *executionContext) unmarshalOBoolean2bool(ctx context.Context, v interface{}) (bool, error) {
