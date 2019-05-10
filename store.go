@@ -382,7 +382,9 @@ func (s *Store) Delete(id string) (err error) {
 
 // DeleteEdge deletes an edge.
 func (s *Store) DeleteEdge(parent string, child string) (err error) {
-	// Get the IDs.
+	if parent == "" || child == "" {
+		return ErrMissingNodeID
+	}
 	n, ok, err := s.Get(parent)
 	if err != nil {
 		return

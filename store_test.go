@@ -1186,6 +1186,221 @@ func TestStoreDelete(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteEdge(t *testing.T) {
+	tests := []struct {
+		name                     string
+		parent                   string
+		child                    string
+		recordsToReturn          []map[string]*dynamodb.AttributeValue
+		keysToDelete             []map[string]*dynamodb.AttributeValue
+		mockQueryByIDOutputError error
+		mockDeleteOutputError    error
+		expectedErr              error
+	}{
+		{
+			name:   "Missing parent ID results in no error, and no results",
+			parent: "",
+			child:  "something",
+			mockQueryByIDOutputError: fmt.Errorf("unexpected 1st database call"),
+			mockDeleteOutputError:    fmt.Errorf("unexpected 2nd database call"),
+			expectedErr:              ErrMissingNodeID,
+		},
+		{
+			name:   "Missing child ID results in no error, and no results",
+			parent: "something",
+			child:  "",
+			mockQueryByIDOutputError: fmt.Errorf("unexpected 1st database call"),
+			mockDeleteOutputError:    fmt.Errorf("unexpected 2nd database call"),
+			expectedErr:              ErrMissingNodeID,
+		},
+		{
+			name:   "A node record which doesn't have any children doesn't delete anything",
+			parent: "nodeA",
+			child:  "any",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			mockDeleteOutputError: fmt.Errorf("unexpected call, shouldn't need to delete anything if there's nothing to delete"),
+		},
+		{
+			name:   "A node with children deletes just the matching edges, including deleting the link back from the child to the parent",
+			parent: "nodeA",
+			child:  "childNodeB",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+			},
+			keysToDelete: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNodeB"),
+					},
+					"rng": {
+						S: aws.String("parent/nodeA"),
+					},
+				},
+			},
+		},
+		{
+			name:   "A node with children with data deletes just the matching edges, including deleting the link back from the child to the parent and data records",
+			parent: "nodeA",
+			child:  "childNodeB",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB/data/testEdgeData"),
+					},
+					"t": {
+						S: aws.String("testEdgeData"),
+					},
+					"edgeDataField": {
+						N: aws.String(strconv.Itoa(123)),
+					},
+				},
+			},
+			keysToDelete: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNodeB"),
+					},
+					"rng": {
+						S: aws.String("parent/nodeA"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB/data/testEdgeData"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNodeB"),
+					},
+					"rng": {
+						S: aws.String("parent/nodeA/data/testEdgeData"),
+					},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := newMockDynamoDBClient()
+			callCount := 0
+			client.queryByIDer = func(idField, idValue string) ([]map[string]*dynamodb.AttributeValue, db.ConsumedCapacity, error) {
+				if idField != "id" {
+					t.Errorf("unexpected idField value of '%s'", idField)
+				}
+				if idValue != test.parent {
+					t.Errorf("expected parent of '%s', got '%s'", test.parent, idValue)
+				}
+				defer func() { callCount++ }()
+				if callCount > 0 {
+					t.Errorf("expected QueryByID to be called once, but was called %d times", callCount+1)
+				}
+				cc := db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}
+				err := test.mockQueryByIDOutputError
+				return test.recordsToReturn, cc, err
+			}
+			client.batchDeleter = func(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
+				if !reflect.DeepEqual(keys, test.keysToDelete) {
+					t.Errorf("\nexpected:\n%+v\n\ngot:\n%+v\n", format(test.keysToDelete), format(keys))
+				}
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockQueryByIDOutputError
+			}
+			s := NewStoreWithClient(client)
+			s.RegisterDataType(func() interface{} {
+				return &testNodeData{}
+			})
+			s.RegisterDataType(func() interface{} {
+				return &testEdgeData{}
+			})
+			err := s.DeleteEdge(test.parent, test.child)
+			if err != test.expectedErr {
+				t.Errorf("expected err %v, got %v", test.expectedErr, err)
+			}
+		})
+	}
+}
+
 func format(v []map[string]*dynamodb.AttributeValue) string {
 	var b bytes.Buffer
 	for _, vv := range v {
