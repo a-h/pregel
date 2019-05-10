@@ -77,8 +77,8 @@ Example, get a router, including its location.
             }
           }
           data {
-						... on Location {
-            	lng
+            ... on Location {
+              lng
               lat
           	}
           }
@@ -113,12 +113,12 @@ mutation moveRouterToParis {
       lng: 2.349014
     }
   }) {
-		set
+    set
   }
 }
 ```
 
-Example: Connect a Nintendo Switch in Bruges, but have the parent router.
+Example: create a Nintendo Switch in Bruges and attach it as a child of the router.
 
 ```graphql
 mutation addSwitch {
