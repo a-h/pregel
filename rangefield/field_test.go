@@ -5,6 +5,29 @@ import (
 	"testing"
 )
 
+func TestDecodeNoParts(t *testing.T) {
+	inputs := []string{
+		"",
+		"dead dog",
+		"parent/",
+		"node/",
+		"child/of/a/dead/rat",
+		"parent/of/a/dead/rat",
+		"node/of/a/dead/rat",
+		"node//missed",
+		"node/%%/invalidencoding",
+	}
+	for _, input := range inputs {
+		actual, actualOK := Decode(input)
+		if actualOK {
+			t.Errorf("%q should not decode", input)
+		}
+		if actual != nil {
+			t.Errorf("%q isn't valid and should return nil", input)
+		}
+	}
+}
+
 func TestRoundTrip(t *testing.T) {
 	tests := []struct {
 		input   RangeField
@@ -21,6 +44,10 @@ func TestRoundTrip(t *testing.T) {
 		{
 			input:   Child{Child: "childid"},
 			encoded: "child/childid",
+		},
+		{
+			input:   Child{Child: "中文"},
+			encoded: "child/%E4%B8%AD%E6%96%87",
 		},
 		{
 			input:   ChildData{Child: "childid", DataType: "childdatatype"},

@@ -8,76 +8,58 @@ import (
 
 // Decode a range field.
 func Decode(s string) (f RangeField, ok bool) {
-	parts := decodeField(s)
-	if len(parts) == 0 {
+	parts, ok := decodeField(s)
+	if !ok {
 		return
 	}
 	switch parts[0] {
 	case "node":
-		return decodeNodeField(parts)
+		return decodeNodeField(parts[1:])
 	case "child":
-		return decodeChildField(parts)
+		return decodeChildField(parts[1:])
 	case "parent":
-		return decodeParentField(parts)
+		return decodeParentField(parts[1:])
 	}
 	return nil, false
 }
 
 func decodeNodeField(parts []string) (f RangeField, ok bool) {
 	if len(parts) == 0 {
-		return
-	}
-	if parts[0] != "node" {
-		return
-	}
-	if len(parts) == 1 {
 		return Node{}, true
 	}
-	if len(parts) == 3 && parts[1] == "data" {
+	if len(parts) == 2 && parts[0] == "data" {
 		return NodeData{
-			DataType: parts[2],
+			DataType: parts[1],
 		}, true
 	}
 	return
 }
 
 func decodeChildField(parts []string) (f RangeField, ok bool) {
-	if len(parts) == 0 {
-		return
-	}
-	if parts[0] != "child" {
-		return
-	}
-	if len(parts) == 2 {
+	if len(parts) == 1 {
 		return Child{
-			Child: parts[1],
+			Child: parts[0],
 		}, true
 	}
-	if len(parts) == 4 && parts[2] == "data" {
+	if len(parts) == 3 && parts[1] == "data" {
 		return ChildData{
-			Child:    parts[1],
-			DataType: parts[3],
+			Child:    parts[0],
+			DataType: parts[2],
 		}, true
 	}
 	return
 }
 
 func decodeParentField(parts []string) (f RangeField, ok bool) {
-	if len(parts) == 0 {
-		return
-	}
-	if parts[0] != "parent" {
-		return
-	}
-	if len(parts) == 2 {
+	if len(parts) == 1 {
 		return Parent{
-			Parent: parts[1],
+			Parent: parts[0],
 		}, true
 	}
-	if len(parts) == 4 && parts[2] == "data" {
+	if len(parts) == 3 && parts[1] == "data" {
 		return ParentData{
-			Parent:   parts[1],
-			DataType: parts[3],
+			Parent:   parts[0],
+			DataType: parts[2],
 		}, true
 	}
 	return
@@ -148,12 +130,19 @@ func (k ParentData) Encode() string {
 	return encodeField("parent", k.Parent, "data", k.DataType)
 }
 
-func decodeField(v string) (vals []string) {
-	segs := strings.Split(v, "/")
-	vals = make([]string, len(segs))
+func decodeField(v string) (segs []string, ok bool) {
+	segs = strings.Split(v, "/")
+	var err error
 	for i, s := range segs {
-		vals[i], _ = url.PathUnescape(s)
+		if s == "" {
+			return
+		}
+		segs[i], err = url.PathUnescape(s)
+		if err != nil {
+			return
+		}
 	}
+	ok = true
 	return
 }
 
