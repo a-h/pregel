@@ -341,7 +341,10 @@ func (s *Store) Delete(id string) (err error) {
 
 	keysToDelete := []map[string]*dynamodb.AttributeValue{
 		getID(n.ID, rangefield.Node{}),
-		getID(n.ID, rangefield.NodeData{}),
+	}
+	for dt := range n.Data {
+		keysToDelete = append(keysToDelete,
+			getID(n.ID, rangefield.NodeData{DataType: dt}))
 	}
 	for _, e := range n.Children {
 		// Delete child and parent records.
