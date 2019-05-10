@@ -1408,3 +1408,13 @@ func format(v []map[string]*dynamodb.AttributeValue) string {
 	}
 	return b.String()
 }
+
+func TestNewStore(t *testing.T) {
+	s, err := NewStore("eu-west-2", "exampleTableName")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := s.Client.(*db.DB); !ok {
+		t.Errorf("underlying default database has changed to %T, please check", s.Client)
+	}
+}
