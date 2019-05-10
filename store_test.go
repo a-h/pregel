@@ -2,6 +2,7 @@ package pregel
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -12,26 +13,26 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-func newMockDynamoDBClient() *mockDynamoDBClient {
-	return &mockDynamoDBClient{}
+func newdynamoDBClient() *dynamoDBClient {
+	return &dynamoDBClient{}
 }
 
-type mockDynamoDBClient struct {
+type dynamoDBClient struct {
 	errorToReturn error
 	batchDeleter  func(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error)
 	batchPutter   func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error)
 	queryByIDer   func(idField, idValue string) (items []map[string]*dynamodb.AttributeValue, cc db.ConsumedCapacity, err error)
 }
 
-func (mdc *mockDynamoDBClient) BatchDelete(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
+func (mdc *dynamoDBClient) BatchDelete(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
 	return mdc.batchDeleter(keys)
 }
 
-func (mdc *mockDynamoDBClient) BatchPut(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
+func (mdc *dynamoDBClient) BatchPut(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
 	return mdc.batchPutter(items)
 }
 
-func (mdc *mockDynamoDBClient) QueryByID(idField, idValue string) (items []map[string]*dynamodb.AttributeValue, cc db.ConsumedCapacity, err error) {
+func (mdc *dynamoDBClient) QueryByID(idField, idValue string) (items []map[string]*dynamodb.AttributeValue, cc db.ConsumedCapacity, err error) {
 	return mdc.queryByIDer(idField, idValue)
 }
 
@@ -43,18 +44,36 @@ type testEdgeData struct {
 	EdgeDataField int `json:"edgeDataField"`
 }
 
+var errTestDatabaseFailure = errors.New("test database failure")
+
 func TestStorePut(t *testing.T) {
 	tests := []struct {
-		name            string
-		node            Node
-		expectedItems   []map[string]*dynamodb.AttributeValue
-		mockOutputError error
-		expectedErr     error
+		name                 string
+		node                 Node
+		expectedItems        []map[string]*dynamodb.AttributeValue
+		batchPutterOutputErr error
+		expectedErr          error
 	}{
 		{
 			name:        "Missing node ID results in an error",
 			node:        NewNode(""),
 			expectedErr: ErrMissingNodeID,
+		},
+		{
+			name: "database errors are returned",
+			node: NewNode("id"),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("id"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			batchPutterOutputErr: errTestDatabaseFailure,
+			expectedErr:          errTestDatabaseFailure,
 		},
 		{
 			name: "Put node without data results in a simple node write",
@@ -69,7 +88,7 @@ func TestStorePut(t *testing.T) {
 					},
 				},
 			},
-			mockOutputError: nil,
+			batchPutterOutputErr: nil,
 		},
 		{
 			name: "Put node with data results in two writes, the node itself, plus a data record",
@@ -100,7 +119,7 @@ func TestStorePut(t *testing.T) {
 					},
 				},
 			},
-			mockOutputError: nil,
+			batchPutterOutputErr: nil,
 		},
 		{
 			name: "Put node with a child edge results in 3 writes, the node itself, plus two edge records. " +
@@ -132,7 +151,7 @@ func TestStorePut(t *testing.T) {
 					},
 				},
 			},
-			mockOutputError: nil,
+			batchPutterOutputErr: nil,
 		},
 		{
 			name: "Put node with a parent edge results in 3 writes, the node itself, plus two edge records. " +
@@ -164,7 +183,7 @@ func TestStorePut(t *testing.T) {
 					},
 				},
 			},
-			mockOutputError: nil,
+			batchPutterOutputErr: nil,
 		},
 		{
 			name: "Edges can have data records associated with them. " +
@@ -226,7 +245,7 @@ func TestStorePut(t *testing.T) {
 					},
 				},
 			},
-			mockOutputError: nil,
+			batchPutterOutputErr: nil,
 		},
 	}
 	for _, test := range tests {
@@ -234,7 +253,7 @@ func TestStorePut(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			var actualItems []map[string]*dynamodb.AttributeValue
 			callCount := 0
 			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
@@ -243,7 +262,7 @@ func TestStorePut(t *testing.T) {
 					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
 				}
 				actualItems = items
-				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.batchPutterOutputErr
 			}
 			s := NewStoreWithClient(client)
 			err := s.Put(test.node)
@@ -261,11 +280,11 @@ func TestStorePutNodeData(t *testing.T) {
 	tests := []struct {
 		name string
 		// id of the node to add data to
-		id              string
-		data            Data
-		expectedItems   []map[string]*dynamodb.AttributeValue
-		mockOutputError error
-		expectedErr     error
+		id                   string
+		data                 Data
+		expectedItems        []map[string]*dynamodb.AttributeValue
+		batchPutterOutputErr error
+		expectedErr          error
 	}{
 		{
 			name:        "Missing node ID results in an error",
@@ -285,6 +304,22 @@ func TestStorePutNodeData(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name: "Database errors are returned",
+			id:   "nodeA",
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			batchPutterOutputErr: errTestDatabaseFailure,
+			expectedErr:          errTestDatabaseFailure,
 		},
 		{
 			name: "Put node with data results in two writes, the node itself, plus a data record",
@@ -316,7 +351,6 @@ func TestStorePutNodeData(t *testing.T) {
 					},
 				},
 			},
-			mockOutputError: nil,
 		},
 	}
 	for _, test := range tests {
@@ -324,7 +358,7 @@ func TestStorePutNodeData(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			var actualItems []map[string]*dynamodb.AttributeValue
 			callCount := 0
 			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
@@ -333,7 +367,7 @@ func TestStorePutNodeData(t *testing.T) {
 					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
 				}
 				actualItems = items
-				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.batchPutterOutputErr
 			}
 			s := NewStoreWithClient(client)
 			err := s.PutNodeData(test.id, test.data)
@@ -349,12 +383,12 @@ func TestStorePutNodeData(t *testing.T) {
 
 func TestStorePutEdge(t *testing.T) {
 	tests := []struct {
-		name            string
-		parent          string
-		edge            *Edge
-		expectedItems   []map[string]*dynamodb.AttributeValue
-		mockOutputError error
-		expectedErr     error
+		name                 string
+		parent               string
+		edge                 *Edge
+		expectedItems        []map[string]*dynamodb.AttributeValue
+		batchPutterOutputErr error
+		expectedErr          error
 	}{
 		{
 			name:        "Missing parent ID results in an error",
@@ -383,6 +417,31 @@ func TestStorePutEdge(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name:   "Database errors are returned",
+			parent: "parentNode",
+			edge:   NewEdge("childNode"),
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode"),
+					},
+				},
+			},
+			batchPutterOutputErr: errTestDatabaseFailure,
+			expectedErr:          errTestDatabaseFailure,
 		},
 		{
 			name:   "An edge with data results in 4 writes writes, a parent and a child, plus an edge data record for each",
@@ -443,7 +502,7 @@ func TestStorePutEdge(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			var actualItems []map[string]*dynamodb.AttributeValue
 			callCount := 0
 			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
@@ -452,7 +511,7 @@ func TestStorePutEdge(t *testing.T) {
 					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
 				}
 				actualItems = items
-				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.batchPutterOutputErr
 			}
 			s := NewStoreWithClient(client)
 			err := s.PutEdges(test.parent, test.edge)
@@ -468,13 +527,13 @@ func TestStorePutEdge(t *testing.T) {
 
 func TestStorePutEdgeData(t *testing.T) {
 	tests := []struct {
-		name            string
-		parent          string
-		child           string
-		data            Data
-		expectedItems   []map[string]*dynamodb.AttributeValue
-		mockOutputError error
-		expectedErr     error
+		name                 string
+		parent               string
+		child                string
+		data                 Data
+		expectedItems        []map[string]*dynamodb.AttributeValue
+		batchPutterOutputErr error
+		expectedErr          error
 	}{
 		{
 			name:        "Missing parent ID results in an error",
@@ -511,6 +570,32 @@ func TestStorePutEdgeData(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name:   "Database errors are returned",
+			parent: "parentNode",
+			child:  "childNode",
+			data:   nil,
+			expectedItems: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("parentNode"),
+					},
+					"rng": {
+						S: aws.String("child/childNode"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNode"),
+					},
+					"rng": {
+						S: aws.String("parent/parentNode"),
+					},
+				},
+			},
+			batchPutterOutputErr: errTestDatabaseFailure,
+			expectedErr:          errTestDatabaseFailure,
 		},
 		{
 			name:   "Valid data results in 4 writes writes containing a copy of the edge data record for each side of the relationship",
@@ -572,7 +657,7 @@ func TestStorePutEdgeData(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			var actualItems []map[string]*dynamodb.AttributeValue
 			callCount := 0
 			client.batchPutter = func(items []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
@@ -581,7 +666,7 @@ func TestStorePutEdgeData(t *testing.T) {
 					t.Errorf("expected BatchPut to be called once, but was called %d times", callCount+1)
 				}
 				actualItems = items
-				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockOutputError
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.batchPutterOutputErr
 			}
 			s := NewStoreWithClient(client)
 			err := s.PutEdgeData(test.parent, test.child, test.data)
@@ -597,13 +682,13 @@ func TestStorePutEdgeData(t *testing.T) {
 
 func TestStoreGet(t *testing.T) {
 	tests := []struct {
-		name            string
-		id              string
-		recordsToReturn []map[string]*dynamodb.AttributeValue
-		expected        Node
-		expectedOK      bool
-		mockOutputError error
-		expectedErr     error
+		name               string
+		id                 string
+		recordsToReturn    []map[string]*dynamodb.AttributeValue
+		expected           Node
+		expectedOK         bool
+		queryByIDOutputErr error
+		expectedErr        error
 	}{
 		{
 			name:       "Missing node ID results in no error, and no results",
@@ -625,6 +710,24 @@ func TestStoreGet(t *testing.T) {
 			},
 			expected:   NewNode("nodeA"),
 			expectedOK: true,
+		},
+		{
+			name: "Database errors are returned",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			expected:           Node{},
+			expectedOK:         false,
+			queryByIDOutputErr: errTestDatabaseFailure,
+			expectedErr:        errTestDatabaseFailure,
 		},
 		{
 			name: "A node record can be returned with its data",
@@ -807,7 +910,7 @@ func TestStoreGet(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			callCount := 0
 			client.queryByIDer = func(idField, idValue string) ([]map[string]*dynamodb.AttributeValue, db.ConsumedCapacity, error) {
 				if idField != "id" {
@@ -821,7 +924,7 @@ func TestStoreGet(t *testing.T) {
 					t.Errorf("expected QueryByID to be called once, but was called %d times", callCount+1)
 				}
 				cc := db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}
-				err := test.mockOutputError
+				err := test.queryByIDOutputErr
 				return test.recordsToReturn, cc, err
 			}
 			s := NewStoreWithClient(client)
@@ -847,18 +950,18 @@ func TestStoreGet(t *testing.T) {
 
 func TestStoreDelete(t *testing.T) {
 	tests := []struct {
-		name                     string
-		id                       string
-		recordsToReturn          []map[string]*dynamodb.AttributeValue
-		keysToDelete             []map[string]*dynamodb.AttributeValue
-		mockQueryByIDOutputError error
-		mockDeleteOutputError    error
-		expectedErr              error
+		name               string
+		id                 string
+		recordsToReturn    []map[string]*dynamodb.AttributeValue
+		keysToDelete       []map[string]*dynamodb.AttributeValue
+		queryByIDOutputErr error
+		deleteOutputErr    error
+		expectedErr        error
 	}{
 		{
-			name: "Missing node ID results in no error, and no results",
-			id:   "",
-			mockDeleteOutputError: fmt.Errorf("unexpected 2nd database call"),
+			name:            "Missing node ID results in no error, and no results",
+			id:              "",
+			deleteOutputErr: fmt.Errorf("unexpected 2nd database call"),
 		},
 		{
 			name: "A node record which doesn't have data or children can be deleted",
@@ -883,6 +986,38 @@ func TestStoreDelete(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name:               "query database errors are returned",
+			id:                 "nodeA",
+			queryByIDOutputErr: errTestDatabaseFailure,
+			expectedErr:        errTestDatabaseFailure,
+		},
+		{
+			name: "delete database errors are returned",
+			id:   "nodeA",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			keysToDelete: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+			},
+			deleteOutputErr: errTestDatabaseFailure,
+			expectedErr:     errTestDatabaseFailure,
 		},
 		{
 			name: "A node record with data is fully deleted",
@@ -1148,7 +1283,7 @@ func TestStoreDelete(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			callCount := 0
 			client.queryByIDer = func(idField, idValue string) ([]map[string]*dynamodb.AttributeValue, db.ConsumedCapacity, error) {
 				if idField != "id" {
@@ -1162,14 +1297,14 @@ func TestStoreDelete(t *testing.T) {
 					t.Errorf("expected QueryByID to be called once, but was called %d times", callCount+1)
 				}
 				cc := db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}
-				err := test.mockQueryByIDOutputError
+				err := test.queryByIDOutputErr
 				return test.recordsToReturn, cc, err
 			}
 			client.batchDeleter = func(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
 				if !reflect.DeepEqual(keys, test.keysToDelete) {
 					t.Errorf("\nexpected:\n%+v\n\ngot:\n%+v\n", format(test.keysToDelete), format(keys))
 				}
-				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockQueryByIDOutputError
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.deleteOutputErr
 			}
 			s := NewStoreWithClient(client)
 			s.RegisterDataType(func() interface{} {
@@ -1188,30 +1323,30 @@ func TestStoreDelete(t *testing.T) {
 
 func TestStoreDeleteEdge(t *testing.T) {
 	tests := []struct {
-		name                     string
-		parent                   string
-		child                    string
-		recordsToReturn          []map[string]*dynamodb.AttributeValue
-		keysToDelete             []map[string]*dynamodb.AttributeValue
-		mockQueryByIDOutputError error
-		mockDeleteOutputError    error
-		expectedErr              error
+		name               string
+		parent             string
+		child              string
+		recordsToReturn    []map[string]*dynamodb.AttributeValue
+		keysToDelete       []map[string]*dynamodb.AttributeValue
+		queryByIDOutputErr error
+		deleteOutputErr    error
+		expectedErr        error
 	}{
 		{
-			name:   "Missing parent ID results in no error, and no results",
-			parent: "",
-			child:  "something",
-			mockQueryByIDOutputError: fmt.Errorf("unexpected 1st database call"),
-			mockDeleteOutputError:    fmt.Errorf("unexpected 2nd database call"),
-			expectedErr:              ErrMissingNodeID,
+			name:               "Missing parent ID results in no error, and no results",
+			parent:             "",
+			child:              "something",
+			queryByIDOutputErr: fmt.Errorf("unexpected 1st database call"),
+			deleteOutputErr:    fmt.Errorf("unexpected 2nd database call"),
+			expectedErr:        ErrMissingNodeID,
 		},
 		{
-			name:   "Missing child ID results in no error, and no results",
-			parent: "something",
-			child:  "",
-			mockQueryByIDOutputError: fmt.Errorf("unexpected 1st database call"),
-			mockDeleteOutputError:    fmt.Errorf("unexpected 2nd database call"),
-			expectedErr:              ErrMissingNodeID,
+			name:               "Missing child ID results in no error, and no results",
+			parent:             "something",
+			child:              "",
+			queryByIDOutputErr: fmt.Errorf("unexpected 1st database call"),
+			deleteOutputErr:    fmt.Errorf("unexpected 2nd database call"),
+			expectedErr:        ErrMissingNodeID,
 		},
 		{
 			name:   "A node record which doesn't have any children doesn't delete anything",
@@ -1227,7 +1362,7 @@ func TestStoreDeleteEdge(t *testing.T) {
 					},
 				},
 			},
-			mockDeleteOutputError: fmt.Errorf("unexpected call, shouldn't need to delete anything if there's nothing to delete"),
+			deleteOutputErr: fmt.Errorf("unexpected call, shouldn't need to delete anything if there's nothing to delete"),
 		},
 		{
 			name:   "A node with children deletes just the matching edges, including deleting the link back from the child to the parent",
@@ -1277,6 +1412,56 @@ func TestStoreDeleteEdge(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name:               "Query database errors are returned",
+			parent:             "nodeA",
+			child:              "childNodeB",
+			queryByIDOutputErr: errTestDatabaseFailure,
+			expectedErr:        errTestDatabaseFailure,
+		},
+		{
+			name:   "Delete database errors are returned",
+			parent: "nodeA",
+			child:  "childNodeB",
+			recordsToReturn: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("node"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+			},
+			keysToDelete: []map[string]*dynamodb.AttributeValue{
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("nodeA"),
+					},
+					"rng": {
+						S: aws.String("child/childNodeB"),
+					},
+				},
+				map[string]*dynamodb.AttributeValue{
+					"id": {
+						S: aws.String("childNodeB"),
+					},
+					"rng": {
+						S: aws.String("parent/nodeA"),
+					},
+				},
+			},
+			deleteOutputErr: errTestDatabaseFailure,
+			expectedErr:     errTestDatabaseFailure,
 		},
 		{
 			name:   "A node with children with data deletes just the matching edges, including deleting the link back from the child to the parent and data records",
@@ -1363,7 +1548,7 @@ func TestStoreDeleteEdge(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			client := newMockDynamoDBClient()
+			client := newdynamoDBClient()
 			callCount := 0
 			client.queryByIDer = func(idField, idValue string) ([]map[string]*dynamodb.AttributeValue, db.ConsumedCapacity, error) {
 				if idField != "id" {
@@ -1377,14 +1562,14 @@ func TestStoreDeleteEdge(t *testing.T) {
 					t.Errorf("expected QueryByID to be called once, but was called %d times", callCount+1)
 				}
 				cc := db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}
-				err := test.mockQueryByIDOutputError
+				err := test.queryByIDOutputErr
 				return test.recordsToReturn, cc, err
 			}
 			client.batchDeleter = func(keys []map[string]*dynamodb.AttributeValue) (db.ConsumedCapacity, error) {
 				if !reflect.DeepEqual(keys, test.keysToDelete) {
 					t.Errorf("\nexpected:\n%+v\n\ngot:\n%+v\n", format(test.keysToDelete), format(keys))
 				}
-				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.mockQueryByIDOutputError
+				return db.ConsumedCapacity{ConsumedCapacity: 1, ConsumedReadCapacity: 3, ConsumedWriteCapacity: 5}, test.deleteOutputErr
 			}
 			s := NewStoreWithClient(client)
 			s.RegisterDataType(func() interface{} {

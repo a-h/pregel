@@ -310,9 +310,9 @@ func (s *Store) Get(id string) (n Node, ok bool, err error) {
 	if id == "" {
 		return
 	}
-	items, cc, err := s.Client.QueryByID(fieldID, id)
-	if err != nil {
-		err = fmt.Errorf("Store.Get: failed to query pages: %v", err)
+	items, cc, qErr := s.Client.QueryByID(fieldID, id)
+	if qErr != nil {
+		err = qErr
 		return
 	}
 	s.updateCapacityStats(cc)
@@ -320,7 +320,6 @@ func (s *Store) Get(id string) (n Node, ok bool, err error) {
 	for _, itm := range items {
 		err = s.populateNodeFromRecord(itm, &n)
 		if err != nil {
-			err = fmt.Errorf("Store.Get: failed to unmarshal data: %v", err)
 			return
 		}
 	}
@@ -390,6 +389,9 @@ func (s *Store) DeleteEdge(parent string, child string) (err error) {
 		return
 	}
 	if !ok {
+		return
+	}
+	if len(n.Children) == 0 {
 		return
 	}
 
