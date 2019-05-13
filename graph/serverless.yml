@@ -1,0 +1,61 @@
+service: pregel
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: dev
+  region: eu-west-2
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+      - "dynamodb:Query"
+      - "dynamodb:BatchGetItem"
+      - "dynamodb:BatchWriteItem"
+      Resource:
+        Fn::GetAtt: [ pregelStore, Arn ]
+
+package:
+ exclude:
+   - ./**
+ include:
+   - ./bin/**
+
+functions:
+  handler:
+    handler: bin/handler
+    events:
+      - http:
+          path: /
+          method: ANY
+      - http:
+          path: /{any+}
+          method: ANY
+    environment:
+      PREGEL_DYNAMO_REGION: ${self:provider.region}
+      PREGEL_DYNAMO_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-pregel-store
+
+resources:
+  Resources:
+    pregelStore:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-pregel-store
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+        SSESpecification:
+          SSEEnabled: true
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: rng
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: rng
+            AttributeType: S
+        TimeToLiveSpecification:
+          AttributeName: expires
+          Enabled: true
